@@ -1,6 +1,6 @@
-
 import { ArrowRight, Mail, TrendingUp, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 const Hero = () => {
   return (
@@ -23,13 +23,15 @@ const Hero = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                size="lg" 
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
-              >
-                Connect Your Email
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              <Link to="/login">
+                <Button 
+                  size="lg" 
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
+                >
+                  Connect Your Email
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
               <Button 
                 size="lg" 
                 variant="outline" 
