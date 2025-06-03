@@ -1,6 +1,5 @@
-
-import { Home, CreditCard, TrendingUp, Settings, Plus, Bell } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Home, CreditCard, TrendingUp, Settings, Plus, Bell, LogOut } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +12,9 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { signOut } from "firebase/auth";
+import { useToast } from "@/components/ui/use-toast";
 
 const menuItems = [
   {
@@ -44,6 +46,21 @@ const menuItems = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to log out",
+        variant: "destructive"
+      });
+    }
+  };
 
   return (
     <Sidebar className="border-r">
@@ -76,10 +93,14 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t">
+      <SidebarFooter className="p-4 border-t space-y-4">
         <Button className="w-full gap-2">
           <Plus className="h-4 w-4" />
           Add Subscription
+        </Button>
+        <Button variant="outline" className="w-full gap-2" onClick={handleLogout}>
+          <LogOut className="h-4 w-4" />
+          Logout
         </Button>
       </SidebarFooter>
     </Sidebar>
