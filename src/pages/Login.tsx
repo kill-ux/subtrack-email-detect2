@@ -1,25 +1,46 @@
-
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { auth } from '@/lib/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { useToast } from '@/components/ui/use-toast';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive"
+      });
       return;
     }
-    // TODO: Implement create account logic
-    console.log('Create account attempt:', { email, password });
+
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      navigate('/dashboard');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create account",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,6 +71,7 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1"
+                disabled={loading}
               />
             </div>
 
@@ -64,6 +86,7 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="mt-1 pr-10"
+                  disabled={loading}
                 />
                 <button
                   type="button"
@@ -85,14 +108,16 @@ const Login = () => {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 className="mt-1"
+                disabled={loading}
               />
             </div>
 
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              disabled={loading}
             >
-              Create Account
+              {loading ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
 

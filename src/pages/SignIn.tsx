@@ -1,19 +1,36 @@
-
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useToast } from '@/components/ui/use-toast';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement sign in logic
-    console.log('Sign in attempt:', { email, password });
+    setLoading(true);
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      navigate('/dashboard');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Invalid email or password",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -44,6 +61,7 @@ const SignIn = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1"
+                disabled={loading}
               />
             </div>
 
@@ -57,6 +75,7 @@ const SignIn = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="mt-1"
+                disabled={loading}
               />
             </div>
 
@@ -69,8 +88,9 @@ const SignIn = () => {
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              disabled={loading}
             >
-              Sign In
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 
