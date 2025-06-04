@@ -5,11 +5,32 @@ import { StatsCards } from "@/components/StatsCards";
 import { SubscriptionsList } from "@/components/SubscriptionsList";
 import { SpendingChart } from "@/components/SpendingChart";
 import { DetailsSidebar } from "@/components/DetailsSidebar";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UpcomingPayments } from "@/components/UpcomingPayments";
+import { GmailAuthDialog } from "@/components/GmailAuthDialog";
+import { useAuth } from "@/lib/AuthContext";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const Dashboard = () => {
   const [showDetails, setShowDetails] = useState(false);
+  const [showGmailAuth, setShowGmailAuth] = useState(false);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const checkGmailAuth = async () => {
+      if (user) {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const hasGmailAuth = userDoc.exists() && userDoc.data()?.gmailAuthorized;
+        
+        if (!hasGmailAuth) {
+          setShowGmailAuth(true);
+        }
+      }
+    };
+
+    checkGmailAuth();
+  }, [user]);
 
   return (
     <SidebarProvider>
@@ -36,6 +57,10 @@ const Dashboard = () => {
         {showDetails && (
           <DetailsSidebar onClose={() => setShowDetails(false)} />
         )}
+        <GmailAuthDialog 
+          open={showGmailAuth} 
+          onOpenChange={setShowGmailAuth} 
+        />
       </div>
     </SidebarProvider>
   );
