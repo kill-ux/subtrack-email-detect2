@@ -16,58 +16,147 @@ export interface DetectedSubscription {
   detectedAt: string;
   lastEmailDate: string;
   emailSubject: string;
-  confidence: number; // Add confidence score
+  confidence: number;
+  receiptType: string; // Type of receipt detected
 }
 
-// More specific subscription keywords
-const SUBSCRIPTION_KEYWORDS = [
-  'subscription renewed', 'subscription receipt', 'payment confirmation',
-  'invoice', 'billing statement', 'auto-renewal', 'recurring payment',
-  'membership renewed', 'plan renewed', 'premium subscription',
-  'monthly plan', 'yearly plan', 'annual subscription'
+// Receipt-specific keywords that indicate actual billing/payment
+const RECEIPT_KEYWORDS = [
+  // Payment confirmations
+  'payment received', 'payment confirmation', 'payment processed',
+  'transaction complete', 'charge successful', 'payment successful',
+  
+  // Receipt indicators
+  'receipt', 'invoice', 'billing statement', 'statement',
+  'your bill', 'amount charged', 'amount billed',
+  
+  // Subscription billing
+  'subscription renewed', 'subscription payment', 'auto-renewal',
+  'recurring payment', 'membership renewed', 'plan renewed',
+  
+  // Financial transaction terms
+  'charged to', 'billed to', 'debited from', 'paid via',
+  'credit card ending', 'payment method', 'billing cycle'
+];
+
+// Financial/transaction indicators
+const FINANCIAL_INDICATORS = [
+  // Payment methods
+  'credit card', 'debit card', 'visa', 'mastercard', 'amex', 'american express',
+  'paypal', 'bank account', 'payment method', 'billing method',
+  
+  // Transaction details
+  'transaction id', 'reference number', 'confirmation number',
+  'order number', 'invoice number', 'receipt number',
+  
+  // Billing terms
+  'billing period', 'billing cycle', 'next billing date',
+  'subscription period', 'service period', 'coverage period'
+];
+
+// Amount context patterns - these should appear near dollar amounts
+const AMOUNT_CONTEXT_PATTERNS = [
+  'total', 'amount', 'charged', 'billed', 'paid', 'cost', 'price',
+  'subscription', 'plan', 'membership', 'service fee', 'monthly fee',
+  'annual fee', 'recurring charge', 'auto-payment'
 ];
 
 // Exclude these patterns that often cause false positives
 const EXCLUDE_PATTERNS = [
-  'purchase confirmation', 'order confirmation', 'shipping',
-  'delivery', 'refund', 'return', 'one-time', 'single purchase',
-  'gift card', 'promotional', 'marketing', 'newsletter',
-  'security alert', 'password', 'verification', 'welcome',
-  'thank you for signing up', 'account created', 'free trial started'
+  // Shopping/e-commerce
+  'order shipped', 'order delivered', 'tracking number', 'delivery confirmation',
+  'item shipped', 'package delivered', 'shipping notification',
+  
+  // One-time purchases
+  'purchase confirmation', 'order confirmation', 'thank you for your order',
+  'one-time purchase', 'single payment', 'gift purchase',
+  
+  // Promotional/marketing
+  'promotional', 'marketing', 'newsletter', 'unsubscribe',
+  'special offer', 'discount', 'sale', 'free trial started',
+  
+  // Account management
+  'password reset', 'security alert', 'account verification',
+  'welcome', 'getting started', 'account created',
+  
+  // Refunds/returns
+  'refund', 'return', 'cancelled order', 'order cancelled'
 ];
 
-// Known subscription services with their patterns
+// Known subscription services with enhanced patterns
 const SERVICE_PATTERNS = {
   // Streaming & Entertainment
-  netflix: { name: 'Netflix', category: 'Entertainment', keywords: ['netflix'] },
-  spotify: { name: 'Spotify', category: 'Music', keywords: ['spotify'] },
-  'disney plus': { name: 'Disney+', category: 'Entertainment', keywords: ['disney', 'disney+'] },
-  hulu: { name: 'Hulu', category: 'Entertainment', keywords: ['hulu'] },
-  'amazon prime': { name: 'Amazon Prime', category: 'Entertainment', keywords: ['prime video', 'prime membership'] },
+  netflix: { 
+    name: 'Netflix', 
+    category: 'Entertainment', 
+    keywords: ['netflix'],
+    domains: ['netflix.com'],
+    receiptPatterns: ['netflix subscription', 'streaming service']
+  },
+  spotify: { 
+    name: 'Spotify', 
+    category: 'Music', 
+    keywords: ['spotify'],
+    domains: ['spotify.com'],
+    receiptPatterns: ['spotify premium', 'music streaming']
+  },
   
   // Development & Productivity
-  github: { name: 'GitHub Pro', category: 'Development', keywords: ['github'] },
-  stackblitz: { name: 'StackBlitz', category: 'Development', keywords: ['stackblitz'] },
-  'adobe creative': { name: 'Adobe Creative Cloud', category: 'Design', keywords: ['adobe', 'creative cloud'] },
-  figma: { name: 'Figma', category: 'Design', keywords: ['figma'] },
-  notion: { name: 'Notion', category: 'Productivity', keywords: ['notion'] },
-  slack: { name: 'Slack', category: 'Productivity', keywords: ['slack'] },
+  github: { 
+    name: 'GitHub Pro', 
+    category: 'Development', 
+    keywords: ['github'],
+    domains: ['github.com'],
+    receiptPatterns: ['github pro', 'github subscription', 'developer plan']
+  },
+  stackblitz: { 
+    name: 'StackBlitz', 
+    category: 'Development', 
+    keywords: ['stackblitz'],
+    domains: ['stackblitz.com'],
+    receiptPatterns: ['stackblitz pro', 'online ide', 'development environment']
+  },
+  
+  // Design & Creative
+  'adobe creative': { 
+    name: 'Adobe Creative Cloud', 
+    category: 'Design', 
+    keywords: ['adobe', 'creative cloud'],
+    domains: ['adobe.com'],
+    receiptPatterns: ['creative cloud', 'adobe subscription']
+  },
+  figma: { 
+    name: 'Figma', 
+    category: 'Design', 
+    keywords: ['figma'],
+    domains: ['figma.com'],
+    receiptPatterns: ['figma professional', 'design tool']
+  },
   
   // Cloud & Storage
-  dropbox: { name: 'Dropbox', category: 'Storage', keywords: ['dropbox'] },
-  'google workspace': { name: 'Google Workspace', category: 'Productivity', keywords: ['google workspace', 'gsuite'] },
-  'microsoft 365': { name: 'Microsoft 365', category: 'Productivity', keywords: ['microsoft 365', 'office 365'] },
+  dropbox: { 
+    name: 'Dropbox', 
+    category: 'Storage', 
+    keywords: ['dropbox'],
+    domains: ['dropbox.com'],
+    receiptPatterns: ['dropbox plus', 'cloud storage']
+  },
   
-  // News & Media
-  'new york times': { name: 'New York Times', category: 'News', keywords: ['nytimes', 'new york times'] },
-  'wall street journal': { name: 'Wall Street Journal', category: 'News', keywords: ['wsj', 'wall street journal'] }
-};
-
-// Billing cycle indicators
-const BILLING_CYCLE_PATTERNS = {
-  monthly: ['monthly', 'month', '/month', 'per month', 'mo.', 'monthly plan'],
-  yearly: ['yearly', 'annual', 'year', '/year', 'per year', 'annually', 'yr.'],
-  weekly: ['weekly', 'week', '/week', 'per week', 'wk.']
+  // Productivity
+  notion: { 
+    name: 'Notion', 
+    category: 'Productivity', 
+    keywords: ['notion'],
+    domains: ['notion.so'],
+    receiptPatterns: ['notion pro', 'workspace']
+  },
+  slack: { 
+    name: 'Slack', 
+    category: 'Productivity', 
+    keywords: ['slack'],
+    domains: ['slack.com'],
+    receiptPatterns: ['slack pro', 'team communication']
+  }
 };
 
 export class EmailProcessor {
@@ -81,7 +170,7 @@ export class EmailProcessor {
 
   async processEmails(): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🔍 Starting improved email processing for user: ${this.userId}`);
+      console.log(`🔍 Starting receipt-based email processing for user: ${this.userId}`);
       
       // Check if user has Gmail authorization
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
@@ -97,25 +186,33 @@ export class EmailProcessor {
 
       console.log(`✅ Valid access token obtained for user: ${this.userId}`);
 
-      // Search for emails with more specific subscription-related queries
+      // Search for emails with receipt-specific queries
       const searchQueries = [
-        'subject:(subscription renewed OR subscription receipt OR payment confirmation)',
-        'subject:(invoice OR billing statement OR auto-renewal)',
-        'subject:(membership renewed OR plan renewed)',
-        'from:(noreply OR billing OR subscriptions OR payments)',
-        'body:(subscription OR recurring payment OR auto-renewal)'
+        // Receipt and invoice specific
+        'subject:(receipt OR invoice OR "billing statement")',
+        'subject:("payment confirmation" OR "payment received" OR "transaction complete")',
+        'subject:("subscription renewed" OR "auto-renewal" OR "recurring payment")',
+        
+        // Financial transaction indicators
+        'body:("amount charged" OR "amount billed" OR "total amount")',
+        'body:("credit card" OR "payment method" OR "billing cycle")',
+        
+        // Known subscription services with billing terms
+        'from:(billing OR noreply OR subscriptions) subject:(netflix OR spotify OR github OR adobe OR dropbox)',
+        'body:("subscription" AND ("$" OR "charged" OR "billed"))'
       ];
 
       const oneYearAgo = this.getDateOneYearAgo();
       const detectedSubscriptions: DetectedSubscription[] = [];
+      const processedEmailIds = new Set<string>();
       
       // Process each search query
       for (const searchQuery of searchQueries) {
         const fullQuery = `${searchQuery} after:${oneYearAgo}`;
-        console.log(`🔍 Searching with query: ${fullQuery}`);
+        console.log(`🔍 Searching for receipts with query: ${fullQuery}`);
         
         const response = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(fullQuery)}&maxResults=50`,
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(fullQuery)}&maxResults=30`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -132,10 +229,16 @@ export class EmailProcessor {
         const data = await response.json();
         const messages = data.messages || [];
         
-        console.log(`📧 Found ${messages.length} emails for query`);
+        console.log(`📧 Found ${messages.length} potential receipt emails`);
 
         // Process emails (limit to avoid rate limits)
-        for (const message of messages.slice(0, 25)) {
+        for (const message of messages.slice(0, 20)) {
+          // Skip if already processed
+          if (processedEmailIds.has(message.id)) {
+            continue;
+          }
+          processedEmailIds.add(message.id);
+
           try {
             const emailResponse = await fetch(
               `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
@@ -153,9 +256,9 @@ export class EmailProcessor {
             }
 
             const email = await emailResponse.json();
-            const subscription = this.extractSubscriptionInfo(email);
+            const subscription = this.extractSubscriptionFromReceipt(email);
             
-            if (subscription && subscription.confidence >= 0.7) { // Only high-confidence detections
+            if (subscription && subscription.confidence >= 0.8) { // Higher threshold for receipts
               // Check for duplicates
               const isDuplicate = detectedSubscriptions.some(existing => 
                 existing.serviceName === subscription.serviceName && 
@@ -164,7 +267,7 @@ export class EmailProcessor {
               
               if (!isDuplicate) {
                 detectedSubscriptions.push(subscription);
-                console.log(`✅ High-confidence subscription detected: ${subscription.serviceName} - $${subscription.amount} (confidence: ${subscription.confidence})`);
+                console.log(`✅ Receipt-based subscription detected: ${subscription.serviceName} - $${subscription.amount} (confidence: ${subscription.confidence}, type: ${subscription.receiptType})`);
               }
             }
           } catch (error) {
@@ -173,7 +276,7 @@ export class EmailProcessor {
         }
       }
 
-      console.log(`🎯 Detected ${detectedSubscriptions.length} high-confidence subscriptions for user: ${this.userId}`);
+      console.log(`🎯 Detected ${detectedSubscriptions.length} receipt-based subscriptions for user: ${this.userId}`);
 
       // Save to Firebase
       await this.saveSubscriptions(detectedSubscriptions);
@@ -185,7 +288,7 @@ export class EmailProcessor {
     }
   }
 
-  private extractSubscriptionInfo(email: any): DetectedSubscription | null {
+  private extractSubscriptionFromReceipt(email: any): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
@@ -195,12 +298,13 @@ export class EmailProcessor {
     const body = this.extractEmailBody(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
-    console.log(`🔍 Analyzing email: "${subject}" from "${from}"`);
+    console.log(`🧾 Analyzing potential receipt: "${subject}" from "${from}"`);
 
     // Calculate confidence score
     let confidence = 0;
+    let receiptType = 'unknown';
 
-    // Check for exclusion patterns first
+    // STEP 1: Check for exclusion patterns first
     for (const excludePattern of EXCLUDE_PATTERNS) {
       if (fullText.includes(excludePattern)) {
         console.log(`❌ Excluded due to pattern: ${excludePattern}`);
@@ -208,50 +312,83 @@ export class EmailProcessor {
       }
     }
 
-    // Check for subscription keywords
-    const subscriptionKeywordMatches = SUBSCRIPTION_KEYWORDS.filter(keyword => 
+    // STEP 2: Must contain receipt/financial indicators
+    const receiptIndicators = RECEIPT_KEYWORDS.filter(keyword => 
       fullText.includes(keyword)
     );
     
-    if (subscriptionKeywordMatches.length === 0) {
-      console.log(`❌ No subscription keywords found`);
+    if (receiptIndicators.length === 0) {
+      console.log(`❌ No receipt indicators found`);
       return null;
     }
 
-    confidence += subscriptionKeywordMatches.length * 0.2;
+    confidence += receiptIndicators.length * 0.15;
+    receiptType = receiptIndicators[0];
 
-    // Extract and validate amount
-    const amount = this.extractAmount(fullText);
-    if (!amount || amount < 1 || amount > 1000) {
-      console.log(`❌ Invalid amount: ${amount}`);
+    // STEP 3: Must contain financial transaction indicators
+    const financialIndicators = FINANCIAL_INDICATORS.filter(indicator => 
+      fullText.includes(indicator)
+    );
+    
+    if (financialIndicators.length === 0) {
+      console.log(`❌ No financial transaction indicators found`);
       return null;
     }
 
-    confidence += 0.3; // Found valid amount
+    confidence += financialIndicators.length * 0.1;
 
-    // Extract service name and check against known services
-    const serviceInfo = this.extractServiceInfo(subject, from, fullText);
+    // STEP 4: Extract and validate amount with context
+    const amountInfo = this.extractAmountWithContext(fullText);
+    if (!amountInfo || amountInfo.amount < 1 || amountInfo.amount > 1000) {
+      console.log(`❌ Invalid or missing amount with context: ${amountInfo?.amount}`);
+      return null;
+    }
+
+    confidence += 0.3; // Found valid amount with context
+    if (amountInfo.hasContext) {
+      confidence += 0.1; // Bonus for amount appearing in proper context
+    }
+
+    // STEP 5: Extract service name and check against known services
+    const serviceInfo = this.extractServiceFromReceipt(subject, from, fullText);
     if (!serviceInfo) {
-      console.log(`❌ Could not identify service`);
+      console.log(`❌ Could not identify service from receipt`);
       return null;
     }
 
     confidence += serviceInfo.confidence;
 
-    // Determine billing cycle
+    // STEP 6: Check for subscription-specific patterns
+    const subscriptionPatterns = [
+      'subscription', 'recurring', 'auto-renewal', 'membership',
+      'monthly plan', 'annual plan', 'billing cycle'
+    ];
+    
+    const subscriptionMatches = subscriptionPatterns.filter(pattern => 
+      fullText.includes(pattern)
+    );
+    
+    if (subscriptionMatches.length === 0) {
+      console.log(`❌ No subscription patterns found in receipt`);
+      return null;
+    }
+
+    confidence += subscriptionMatches.length * 0.05;
+
+    // STEP 7: Determine billing cycle
     const billingCycle = this.determineBillingCycle(fullText);
     if (billingCycle) {
-      confidence += 0.1;
+      confidence += 0.05;
     }
 
-    // Check sender credibility
-    if (this.isTrustedSender(from)) {
-      confidence += 0.2;
+    // STEP 8: Check sender credibility
+    if (this.isTrustedBillingSender(from)) {
+      confidence += 0.15;
     }
 
-    // Must have minimum confidence to proceed
-    if (confidence < 0.7) {
-      console.log(`❌ Low confidence: ${confidence}`);
+    // Must have high confidence for receipt-based detection
+    if (confidence < 0.8) {
+      console.log(`❌ Low confidence for receipt: ${confidence}`);
       return null;
     }
 
@@ -264,7 +401,7 @@ export class EmailProcessor {
     const subscription: DetectedSubscription = {
       userId: this.userId,
       serviceName: serviceInfo.name,
-      amount,
+      amount: amountInfo.amount,
       currency: 'USD',
       billingCycle,
       nextPaymentDate,
@@ -274,41 +411,66 @@ export class EmailProcessor {
       detectedAt: new Date().toISOString(),
       lastEmailDate: new Date(date).toISOString(),
       emailSubject: subject,
-      confidence: Math.round(confidence * 100) / 100
+      confidence: Math.round(confidence * 100) / 100,
+      receiptType
     };
 
-    console.log(`✅ Subscription extracted with confidence ${confidence}: ${serviceInfo.name} - $${amount}`);
+    console.log(`✅ Receipt-based subscription extracted with confidence ${confidence}: ${serviceInfo.name} - $${amountInfo.amount} (${receiptType})`);
     return subscription;
   }
 
-  private extractAmount(text: string): number | null {
-    // More precise amount extraction patterns
-    const amountPatterns = [
-      // Standard currency formats
-      /\$(\d+(?:\.\d{2}))/g,
-      /(\d+(?:\.\d{2}))\s*USD/gi,
-      /(\d+(?:\.\d{2}))\s*dollars?/gi,
+  private extractAmountWithContext(text: string): { amount: number; hasContext: boolean } | null {
+    // Look for amounts that appear in proper billing context
+    const contextualAmountPatterns = [
+      // Direct billing context
+      /(?:total|amount|charged|billed|paid|cost|price)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /(?:subscription|plan|membership)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /(?:monthly|annual|yearly)[:\s]*(?:fee|charge|payment)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
       
-      // Context-specific patterns
-      /(?:amount|total|price|cost|charge)[:\s]*\$?(\d+(?:\.\d{2}))/gi,
-      /(?:billed|charged|paid)[:\s]*\$?(\d+(?:\.\d{2}))/gi,
-      /(?:subscription|plan)[:\s]*\$?(\d+(?:\.\d{2}))/gi,
-      
-      // Invoice patterns
-      /(?:invoice|bill)[:\s]*\$?(\d+(?:\.\d{2}))/gi
+      // Receipt-style formatting
+      /(?:subtotal|total due|amount due)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /\$(\d+(?:\.\d{2})?)\s*(?:was charged|has been charged|charged to)/gi,
+      /(?:you paid|payment of|charged amount)[:\s]*\$(\d+(?:\.\d{2})?)/gi
     ];
 
-    const foundAmounts: number[] = [];
+    // Also look for standalone amounts but with lower confidence
+    const standaloneAmountPatterns = [
+      /\$(\d+(?:\.\d{2})?)/g
+    ];
 
-    for (const pattern of amountPatterns) {
-      const matches = text.match(pattern);
-      if (matches) {
+    const foundAmounts: { amount: number; hasContext: boolean }[] = [];
+
+    // First, look for contextual amounts (higher priority)
+    for (const pattern of contextualAmountPatterns) {
+      const matches = [...text.matchAll(pattern)];
+      for (const match of matches) {
+        const amount = parseFloat(match[1]);
+        if (amount >= 1 && amount <= 1000) {
+          foundAmounts.push({ amount, hasContext: true });
+        }
+      }
+    }
+
+    // If no contextual amounts found, look for standalone amounts
+    if (foundAmounts.length === 0) {
+      for (const pattern of standaloneAmountPatterns) {
+        const matches = [...text.matchAll(pattern)];
         for (const match of matches) {
-          const numMatch = match.match(/(\d+(?:\.\d{2})?)/);
-          if (numMatch) {
-            const amount = parseFloat(numMatch[1]);
-            if (amount >= 1 && amount <= 1000) { // Reasonable subscription range
-              foundAmounts.push(amount);
+          const amount = parseFloat(match[1]);
+          if (amount >= 1 && amount <= 1000) {
+            // Check if this amount appears near subscription-related terms
+            const matchIndex = match.index || 0;
+            const contextWindow = text.substring(
+              Math.max(0, matchIndex - 50), 
+              Math.min(text.length, matchIndex + 50)
+            );
+            
+            const hasNearbyContext = AMOUNT_CONTEXT_PATTERNS.some(pattern => 
+              contextWindow.includes(pattern)
+            );
+            
+            if (hasNearbyContext) {
+              foundAmounts.push({ amount, hasContext: false });
             }
           }
         }
@@ -317,52 +479,63 @@ export class EmailProcessor {
 
     if (foundAmounts.length === 0) return null;
 
-    // Return the most common amount, or the first if all are unique
-    const amountCounts = foundAmounts.reduce((acc, amount) => {
-      acc[amount] = (acc[amount] || 0) + 1;
-      return acc;
-    }, {} as Record<number, number>);
+    // Prefer contextual amounts, then most common amount
+    const contextualAmounts = foundAmounts.filter(a => a.hasContext);
+    if (contextualAmounts.length > 0) {
+      return contextualAmounts[0];
+    }
 
-    return Object.entries(amountCounts)
-      .sort(([,a], [,b]) => b - a)[0]?.[0] 
-      ? parseFloat(Object.entries(amountCounts).sort(([,a], [,b]) => b - a)[0][0])
-      : foundAmounts[0];
+    return foundAmounts[0];
   }
 
-  private extractServiceInfo(subject: string, from: string, fullText: string): { name: string; category: string; confidence: number } | null {
-    // Check against known service patterns first
+  private extractServiceFromReceipt(subject: string, from: string, fullText: string): { name: string; category: string; confidence: number } | null {
+    // Check against known service patterns with receipt validation
     for (const [pattern, service] of Object.entries(SERVICE_PATTERNS)) {
       for (const keyword of service.keywords) {
         if (fullText.includes(keyword) || from.toLowerCase().includes(keyword)) {
+          // Additional validation for known services
+          const hasReceiptPattern = service.receiptPatterns?.some(receiptPattern => 
+            fullText.includes(receiptPattern)
+          );
+          
+          const isDomainMatch = service.domains?.some(domain => 
+            from.toLowerCase().includes(domain)
+          );
+          
+          let confidence = 0.3; // Base confidence for keyword match
+          if (hasReceiptPattern) confidence += 0.2;
+          if (isDomainMatch) confidence += 0.2;
+          
           return {
             name: service.name,
             category: service.category,
-            confidence: 0.4 // High confidence for known services
+            confidence
           };
         }
       }
     }
 
-    // Extract from email domain
-    const emailMatch = from.match(/@([^.]+)/);
+    // Extract from email domain with receipt validation
+    const emailMatch = from.match(/@([^.]+\.[^.]+)/);
     if (emailMatch) {
       const domain = emailMatch[1].toLowerCase();
       
       // Skip generic domains
-      const genericDomains = ['gmail', 'yahoo', 'outlook', 'hotmail', 'noreply', 'no-reply'];
-      if (genericDomains.includes(domain)) {
+      const genericDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com'];
+      if (genericDomains.some(generic => domain.includes(generic))) {
         return null;
       }
       
-      // Check if domain suggests a subscription service
-      const subscriptionIndicators = ['billing', 'subscription', 'payments', 'noreply'];
-      const hasSubscriptionIndicator = subscriptionIndicators.some(indicator => 
+      // Check if sender suggests a billing/subscription service
+      const billingIndicators = ['billing', 'noreply', 'no-reply', 'subscriptions', 'payments', 'accounts'];
+      const hasBillingIndicator = billingIndicators.some(indicator => 
         from.toLowerCase().includes(indicator)
       );
       
-      if (hasSubscriptionIndicator) {
+      if (hasBillingIndicator) {
+        const serviceName = domain.split('.')[0];
         return {
-          name: domain.charAt(0).toUpperCase() + domain.slice(1),
+          name: serviceName.charAt(0).toUpperCase() + serviceName.slice(1),
           category: 'Other',
           confidence: 0.2
         };
@@ -373,18 +546,25 @@ export class EmailProcessor {
   }
 
   private determineBillingCycle(text: string): 'monthly' | 'yearly' | 'weekly' {
-    for (const [cycle, patterns] of Object.entries(BILLING_CYCLE_PATTERNS)) {
+    const billingPatterns = {
+      yearly: ['annual', 'yearly', 'year', '/year', 'per year', 'annually', '12 months'],
+      monthly: ['monthly', 'month', '/month', 'per month', '30 days'],
+      weekly: ['weekly', 'week', '/week', 'per week', '7 days']
+    };
+
+    for (const [cycle, patterns] of Object.entries(billingPatterns)) {
       if (patterns.some(pattern => text.includes(pattern))) {
         return cycle as 'monthly' | 'yearly' | 'weekly';
       }
     }
+    
     return 'monthly'; // Default assumption
   }
 
-  private isTrustedSender(from: string): boolean {
+  private isTrustedBillingSender(from: string): boolean {
     const trustedPatterns = [
       'noreply', 'no-reply', 'billing', 'subscriptions', 'payments',
-      'support', 'accounts', 'notifications'
+      'support', 'accounts', 'notifications', 'receipts', 'invoices'
     ];
     
     return trustedPatterns.some(pattern => 
@@ -422,7 +602,8 @@ export class EmailProcessor {
       /next payment:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
       /renewal date:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
       /due date:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
-      /renews on:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i
+      /renews on:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
+      /billing date:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i
     ];
 
     for (const pattern of datePatterns) {
@@ -482,7 +663,7 @@ export class EmailProcessor {
         if (existingDocs.empty) {
           // Add new subscription
           await addDoc(subscriptionsRef, subscription);
-          console.log(`✅ Added new subscription: ${subscription.serviceName} (confidence: ${subscription.confidence}) for user: ${this.userId}`);
+          console.log(`✅ Added receipt-based subscription: ${subscription.serviceName} (confidence: ${subscription.confidence}, type: ${subscription.receiptType}) for user: ${this.userId}`);
         } else {
           // Update existing subscription
           const docRef = doc(db, 'subscriptions', existingDocs.docs[0].id);
@@ -490,7 +671,7 @@ export class EmailProcessor {
             ...subscription,
             updatedAt: new Date().toISOString()
           });
-          console.log(`🔄 Updated subscription: ${subscription.serviceName} (confidence: ${subscription.confidence}) for user: ${this.userId}`);
+          console.log(`🔄 Updated receipt-based subscription: ${subscription.serviceName} (confidence: ${subscription.confidence}, type: ${subscription.receiptType}) for user: ${this.userId}`);
         }
       } catch (error) {
         console.error(`❌ Error saving subscription ${subscription.serviceName} for user ${this.userId}:`, error);
