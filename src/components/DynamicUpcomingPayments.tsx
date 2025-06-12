@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar } from "lucide-react";
+import { Calendar, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { SubscriptionStats } from "@/lib/subscriptionService";
 
 interface DynamicUpcomingPaymentsProps {
@@ -46,11 +46,13 @@ export function DynamicUpcomingPayments({ stats, loading }: DynamicUpcomingPayme
     if (name.includes('netflix')) return 'bg-red-500';
     if (name.includes('spotify')) return 'bg-green-500';
     if (name.includes('github')) return 'bg-gray-800';
+    if (name.includes('stackblitz')) return 'bg-blue-400';
     if (name.includes('adobe')) return 'bg-red-600';
     if (name.includes('dropbox')) return 'bg-blue-500';
     if (name.includes('microsoft')) return 'bg-blue-600';
     if (name.includes('google')) return 'bg-yellow-500';
-    if (name.includes('stackblitz')) return 'bg-blue-400';
+    if (name.includes('figma')) return 'bg-purple-500';
+    if (name.includes('notion')) return 'bg-gray-700';
     return 'bg-purple-500';
   };
 
@@ -63,47 +65,93 @@ export function DynamicUpcomingPayments({ stats, loading }: DynamicUpcomingPayme
   };
 
   const getDaysLabel = (days: number): string => {
+    if (days < 0) return 'Overdue';
     if (days === 0) return 'Today';
     if (days === 1) return 'Tomorrow';
     return `${days} days`;
   };
 
+  const getUrgencyIcon = (days: number) => {
+    if (days < 0) return <AlertTriangle className="h-3 w-3 text-red-500" />;
+    if (days <= 1) return <AlertTriangle className="h-3 w-3 text-red-500" />;
+    if (days <= 7) return <Clock className="h-3 w-3 text-yellow-500" />;
+    return <CheckCircle className="h-3 w-3 text-green-500" />;
+  };
+
+  const getBadgeVariant = (days: number) => {
+    if (days < 0) return "destructive";
+    if (days <= 1) return "destructive";
+    if (days <= 7) return "secondary";
+    return "outline";
+  };
+
+  const totalUpcoming = upcomingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-4 w-4" />
-          Upcoming Payments
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Upcoming Payments
+          </CardTitle>
+          {upcomingPayments.length > 0 && (
+            <div className="text-right">
+              <p className="text-sm font-medium">${totalUpcoming.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground">next 30 days</p>
+            </div>
+          )}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {upcomingPayments.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-muted-foreground">No upcoming payments in the next 30 days</p>
+          <div className="text-center py-8">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            </div>
+            <h3 className="font-medium text-sm mb-1">All caught up!</h3>
+            <p className="text-xs text-muted-foreground">
+              No payments due in the next 30 days
+            </p>
           </div>
         ) : (
-          upcomingPayments.slice(0, 5).map((payment, index) => (
-            <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${getServiceColor(payment.serviceName)}`} />
-                <div>
-                  <p className="font-medium text-sm">{payment.serviceName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(payment.nextPaymentDate)}
-                  </p>
+          <>
+            {upcomingPayments.slice(0, 6).map((payment, index) => (
+              <div key={index} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${getServiceColor(payment.serviceName)}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">{payment.serviceName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(payment.nextPaymentDate)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <p className="font-semibold text-sm">${payment.amount.toFixed(2)}</p>
+                    <div className="flex items-center gap-1">
+                      {getUrgencyIcon(payment.daysUntilPayment)}
+                      <Badge 
+                        variant={getBadgeVariant(payment.daysUntilPayment)} 
+                        className="text-xs"
+                      >
+                        {getDaysLabel(payment.daysUntilPayment)}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="font-semibold text-sm">${payment.amount.toFixed(2)}</p>
-                <Badge 
-                  variant={payment.daysUntilPayment <= 3 ? "destructive" : "secondary"} 
-                  className="text-xs"
-                >
-                  {getDaysLabel(payment.daysUntilPayment)}
-                </Badge>
+            ))}
+            
+            {upcomingPayments.length > 6 && (
+              <div className="text-center pt-2">
+                <p className="text-xs text-muted-foreground">
+                  +{upcomingPayments.length - 6} more payments this month
+                </p>
               </div>
-            </div>
-          ))
+            )}
+          </>
         )}
       </CardContent>
     </Card>

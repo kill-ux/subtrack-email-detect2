@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, CreditCard, TrendingUp, TrendingDown } from "lucide-react";
+import { DollarSign, CreditCard, TrendingUp, Calendar } from "lucide-react";
 import { SubscriptionStats } from "@/lib/subscriptionService";
 
 interface DynamicStatsCardsProps {
@@ -33,40 +33,71 @@ export function DynamicStatsCards({ stats, loading }: DynamicStatsCardsProps) {
         <Card>
           <CardContent className="p-6 text-center">
             <p className="text-muted-foreground">No subscription data available</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Scan your emails to detect subscriptions automatically
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  const getChangeText = (current: number, type: string) => {
+    if (current === 0) return "No subscriptions yet";
+    
+    switch (type) {
+      case 'spending':
+        return `$${(current * 12).toFixed(0)} yearly`;
+      case 'active':
+        return stats.trialSubscriptions > 0 ? `${stats.trialSubscriptions} trials` : "All active";
+      case 'yearly':
+        return `$${(current / 12).toFixed(0)} monthly`;
+      case 'upcoming':
+        return current === 1 ? "1 payment due" : `${current} payments due`;
+      default:
+        return "";
+    }
+  };
+
+  const getChangeColor = (type: string, value: number) => {
+    switch (type) {
+      case 'spending':
+        return value > 100 ? 'text-red-600' : value > 50 ? 'text-yellow-600' : 'text-green-600';
+      case 'upcoming':
+        return value > 3 ? 'text-red-600' : value > 1 ? 'text-yellow-600' : 'text-green-600';
+      default:
+        return 'text-muted-foreground';
+    }
+  };
+
   const statsData = [
     {
       title: "Monthly Spending",
       value: `$${stats.totalMonthlySpending.toFixed(2)}`,
-      change: "+12% from last month",
-      changeType: "increase",
+      change: getChangeText(stats.totalMonthlySpending, 'spending'),
+      changeType: getChangeColor('spending', stats.totalMonthlySpending),
       icon: DollarSign,
     },
     {
       title: "Active Subscriptions",
       value: stats.activeSubscriptions.toString(),
-      change: `${stats.trialSubscriptions} trials`,
-      changeType: "neutral",
+      change: getChangeText(stats.activeSubscriptions, 'active'),
+      changeType: 'text-muted-foreground',
       icon: CreditCard,
     },
     {
       title: "Yearly Projection",
       value: `$${stats.totalYearlySpending.toFixed(2)}`,
-      change: "Based on current subs",
-      changeType: "neutral",
+      change: getChangeText(stats.totalYearlySpending, 'yearly'),
+      changeType: 'text-muted-foreground',
       icon: TrendingUp,
     },
     {
       title: "Upcoming Payments",
       value: stats.upcomingPayments.length.toString(),
-      change: "Next 30 days",
-      changeType: "neutral",
-      icon: TrendingDown,
+      change: getChangeText(stats.upcomingPayments.length, 'upcoming'),
+      changeType: getChangeColor('upcoming', stats.upcomingPayments.length),
+      icon: Calendar,
     },
   ];
 
@@ -82,11 +113,7 @@ export function DynamicStatsCards({ stats, loading }: DynamicStatsCardsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stat.value}</div>
-            <p className={`text-xs ${
-              stat.changeType === 'increase' ? 'text-green-600' :
-              stat.changeType === 'decrease' ? 'text-red-600' :
-              'text-muted-foreground'
-            }`}>
+            <p className={`text-xs ${stat.changeType}`}>
               {stat.change}
             </p>
           </CardContent>
