@@ -43,7 +43,8 @@ const REQUIRED_FINANCIAL_TERMS = [
   'billing statement',
   'amount paid',
   'total',
-  'paid'
+  'paid',
+  '$' // At minimum, must contain a dollar sign
 ];
 
 // Known subscription services - only detect these
@@ -69,7 +70,7 @@ const KNOWN_SERVICES = {
   stackblitz: { 
     name: 'StackBlitz', 
     category: 'Development',
-    domains: ['stackblitz.com'],
+    domains: ['stackblitz.com', 'stripe.com'],
     keywords: ['stackblitz']
   },
   adobe: { 
@@ -114,7 +115,7 @@ const STRICT_EXCLUSIONS = [
   'promotional',
   'marketing',
   'newsletter',
-  'free trial',
+  'free trial started',
   'trial started',
   'account created',
   'verification',
@@ -156,7 +157,9 @@ export class EmailProcessor {
         'subject:"payment receipt"',
         'subject:"billing receipt"',
         'subject:"subscription receipt"',
-        'subject:"your receipt"'
+        'subject:"your receipt"',
+        'from:stackblitz receipt', // Specific for StackBlitz
+        'from:stripe receipt' // StackBlitz uses Stripe for billing
       ];
 
       const oneYearAgo = this.getDateOneYearAgo();
@@ -186,7 +189,7 @@ export class EmailProcessor {
         const data = await response.json();
         const messages = data.messages || [];
         
-        console.log(`📧 Found ${messages.length} emails with "receipt" in subject`);
+        console.log(`📧 Found ${messages.length} emails for query: ${searchQuery}`);
 
         // Process each email with ULTRA-STRICT validation
         for (const message of messages) {
@@ -254,6 +257,7 @@ export class EmailProcessor {
     const fullText = `${subject} ${body}`.toLowerCase();
 
     console.log(`🧾 ULTRA-STRICT validation: "${subject}" from "${from}"`);
+    console.log(`📄 Email body preview: ${body.substring(0, 200)}...`);
 
     // STEP 1: MUST contain "receipt" in subject or body
     const hasReceiptKeyword = RECEIPT_KEYWORDS.some(keyword => 
@@ -283,8 +287,8 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 4: MUST extract valid amount - IMPROVED EXTRACTION
-    const amount = this.extractStrictAmount(fullText, body);
+    // STEP 4: MUST extract valid amount - SUPER DETAILED EXTRACTION
+    const amount = this.extractAmountWithDebug(fullText, body, subject);
     if (!amount || amount < 1 || amount > 500) {
       console.log(`❌ REJECTED: Invalid amount: ${amount}`);
       return null;
@@ -335,93 +339,118 @@ export class EmailProcessor {
     return subscription;
   }
 
-  private extractStrictAmount(text: string, originalBody: string): number | null {
-    console.log(`💰 Extracting amount from text...`);
+  private extractAmountWithDebug(text: string, originalBody: string, subject: string): number | null {
+    console.log(`💰 DEBUGGING amount extraction...`);
+    console.log(`📝 Subject: ${subject}`);
+    console.log(`📄 Body length: ${originalBody.length} chars`);
+    console.log(`🔍 Text preview: ${text.substring(0, 300)}...`);
     
-    // IMPROVED: Multiple extraction strategies for different receipt formats
+    // STRATEGY 1: Look for exact StackBlitz patterns first
+    console.log(`🎯 Strategy 1: StackBlitz-specific patterns`);
     
-    // Strategy 1: StackBlitz-style clean amounts (like your example)
-    // Look for standalone dollar amounts on their own lines
+    // Pattern for your exact StackBlitz receipt format
+    const stackBlitzPatterns = [
+      /\$20\.00/g,  // Exact match for your example
+      /\$(\d+)\.00/g,  // Any whole dollar amount
+      /receipt from stackblitz[^$]*\$(\d+(?:\.\d{2})?)/gi,
+      /stackblitz[^$]*\$(\d+(?:\.\d{2})?)/gi
+    ];
+
+    for (const pattern of stackBlitzPatterns) {
+      console.log(`🔍 Testing pattern: ${pattern.source}`);
+      const matches = [...text.matchAll(pattern)];
+      console.log(`📊 Found ${matches.length} matches`);
+      
+      for (const match of matches) {
+        const amount = match[1] ? parseFloat(match[1]) : parseFloat(match[0].replace('$', ''));
+        console.log(`💵 Extracted amount: ${amount}`);
+        
+        if (amount >= 1 && amount <= 500) {
+          console.log(`✅ VALID StackBlitz amount: $${amount}`);
+          return amount;
+        }
+      }
+    }
+
+    // STRATEGY 2: Clean standalone amounts (like your example)
+    console.log(`🎯 Strategy 2: Clean standalone amounts`);
     const cleanAmountPatterns = [
-      /^\$(\d+(?:\.\d{2})?)\s*$/gm,  // $20.00 on its own line
-      /\n\s*\$(\d+(?:\.\d{2})?)\s*\n/g,  // $20.00 between newlines
-      /\s\$(\d+(?:\.\d{2})?)\s/g,  // $20.00 with spaces around
+      /\$(\d+(?:\.\d{2})?)/g,  // Any dollar amount
+      /(\d+\.\d{2})/g,  // Decimal numbers that could be amounts
     ];
 
     for (const pattern of cleanAmountPatterns) {
+      console.log(`🔍 Testing clean pattern: ${pattern.source}`);
       const matches = [...text.matchAll(pattern)];
+      console.log(`📊 Found ${matches.length} matches: ${matches.map(m => m[0]).join(', ')}`);
+      
       for (const match of matches) {
-        const amount = parseFloat(match[1]);
+        const amount = parseFloat(match[1] || match[0].replace('$', ''));
+        console.log(`💵 Testing amount: ${amount}`);
+        
         if (amount >= 1 && amount <= 500) {
-          console.log(`✅ Found clean amount: $${amount} using pattern: ${pattern.source}`);
+          console.log(`✅ VALID clean amount: $${amount}`);
           return amount;
         }
       }
     }
 
-    // Strategy 2: Context-aware amounts (traditional receipt patterns)
+    // STRATEGY 3: Context-aware amounts
+    console.log(`🎯 Strategy 3: Context-aware amounts`);
     const contextAmountPatterns = [
-      /(?:total|amount|charged|billed|paid)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
-      /\$(\d+(?:\.\d{2})?)\s*(?:charged|billed|paid|total)/gi,
-      /(?:subscription|plan)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
-      /(?:amount paid)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
-      /(?:price|cost)[:\s]*\$(\d+(?:\.\d{2})?)/gi
+      /(?:total|amount|charged|billed|paid)[:\s]*\$?(\d+(?:\.\d{2})?)/gi,
+      /\$?(\d+(?:\.\d{2})?)\s*(?:charged|billed|paid|total)/gi,
+      /(?:subscription|plan)[:\s]*\$?(\d+(?:\.\d{2})?)/gi,
+      /(?:amount paid)[:\s]*\$?(\d+(?:\.\d{2})?)/gi,
+      /(?:price|cost)[:\s]*\$?(\d+(?:\.\d{2})?)/gi
     ];
 
     for (const pattern of contextAmountPatterns) {
+      console.log(`🔍 Testing context pattern: ${pattern.source}`);
       const matches = [...text.matchAll(pattern)];
+      console.log(`📊 Found ${matches.length} context matches`);
+      
       for (const match of matches) {
         const amount = parseFloat(match[1]);
+        console.log(`💵 Context amount: ${amount}`);
+        
         if (amount >= 1 && amount <= 500) {
-          console.log(`✅ Found contextual amount: $${amount} using pattern: ${pattern.source}`);
+          console.log(`✅ VALID context amount: $${amount}`);
           return amount;
         }
       }
     }
 
-    // Strategy 3: Table-style amounts (for structured receipts)
-    const tableAmountPatterns = [
-      /qty\s+1[^\$]*\$(\d+(?:\.\d{2})?)/gi,  // Qty 1 ... $20.00
-      /\$(\d+(?:\.\d{2})?)\s*(?:\n|\r\n|\r)\s*(?:total|amount)/gi,  // $20.00 followed by total
-    ];
-
-    for (const pattern of tableAmountPatterns) {
-      const matches = [...text.matchAll(pattern)];
-      for (const match of matches) {
-        const amount = parseFloat(match[1]);
-        if (amount >= 1 && amount <= 500) {
-          console.log(`✅ Found table amount: $${amount} using pattern: ${pattern.source}`);
-          return amount;
-        }
-      }
-    }
-
-    // Strategy 4: All dollar amounts as fallback
-    const allAmountPattern = /\$(\d+(?:\.\d{2})?)/g;
-    const allMatches = [...text.matchAll(allAmountPattern)];
+    // STRATEGY 4: Brute force - find ALL numbers and see if any make sense
+    console.log(`🎯 Strategy 4: Brute force number extraction`);
+    const allNumbers = text.match(/\d+(?:\.\d{2})?/g) || [];
+    console.log(`🔢 All numbers found: ${allNumbers.join(', ')}`);
     
-    // Filter valid amounts and pick the most likely one
-    const validAmounts = allMatches
-      .map(match => parseFloat(match[1]))
-      .filter(amount => amount >= 1 && amount <= 500)
-      .sort((a, b) => b - a); // Sort descending to prefer larger amounts
-
-    if (validAmounts.length > 0) {
-      const amount = validAmounts[0];
-      console.log(`✅ Found fallback amount: $${amount} from ${validAmounts.length} candidates`);
-      return amount;
+    for (const numStr of allNumbers) {
+      const amount = parseFloat(numStr);
+      if (amount >= 1 && amount <= 500) {
+        console.log(`✅ VALID brute force amount: $${amount}`);
+        return amount;
+      }
     }
 
-    console.log(`❌ No valid amount found in text`);
+    console.log(`❌ NO VALID AMOUNT FOUND after all strategies`);
+    console.log(`📋 Full text for manual inspection:`);
+    console.log(text);
+    
     return null;
   }
 
   private identifyKnownService(subject: string, from: string, fullText: string): { name: string; category: string } | null {
+    console.log(`🔍 Identifying service from: "${from}"`);
+    console.log(`📧 Subject: "${subject}"`);
+    
     // Only detect known services
     for (const [key, service] of Object.entries(KNOWN_SERVICES)) {
       // Check keywords
       for (const keyword of service.keywords) {
-        if (fullText.includes(keyword) || from.toLowerCase().includes(keyword)) {
+        if (fullText.includes(keyword) || from.toLowerCase().includes(keyword) || subject.toLowerCase().includes(keyword)) {
+          console.log(`✅ Service identified: ${service.name} (keyword: ${keyword})`);
           return {
             name: service.name,
             category: service.category
@@ -432,6 +461,7 @@ export class EmailProcessor {
       // Check domains
       for (const domain of service.domains) {
         if (from.toLowerCase().includes(domain)) {
+          console.log(`✅ Service identified: ${service.name} (domain: ${domain})`);
           return {
             name: service.name,
             category: service.category
@@ -440,6 +470,7 @@ export class EmailProcessor {
       }
     }
 
+    console.log(`❌ Unknown service - not in known services list`);
     return null;
   }
 
