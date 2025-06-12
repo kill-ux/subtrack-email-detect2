@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { addDoc, collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -43,43 +42,52 @@ const SERVICE_PATTERNS = {
 };
 
 export class EmailProcessor {
-  private oauth2Client: any;
-  private gmail: any;
+  private accessToken: string;
 
   constructor(tokens: any) {
-    this.oauth2Client = new google.auth.OAuth2(
-      '616003184852-2sjlhqid5sfme4lg3q3n1c6bc14sc7tv.apps.googleusercontent.com',
-      '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',
-      `${window.location.origin}/auth/callback`
-    );
-    
-    this.oauth2Client.setCredentials(tokens);
-    this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    this.accessToken = tokens.access_token;
   }
 
   async processEmails(userId: string): Promise<DetectedSubscription[]> {
     try {
-      // Search for emails with subscription-related keywords
+      // Search for emails with subscription-related keywords using Gmail API directly
       const searchQuery = SUBSCRIPTION_KEYWORDS.map(keyword => `"${keyword}"`).join(' OR ');
+      const oneYearAgo = this.getDateOneYearAgo();
       
-      const response = await this.gmail.users.messages.list({
-        userId: 'me',
-        maxResults: 100,
-        q: `${searchQuery} after:${this.getDateOneYearAgo()}`
-      });
+      const response = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery + ' after:' + oneYearAgo)}&maxResults=100`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      const messages = response.data.messages || [];
+      if (!response.ok) {
+        throw new Error('Failed to fetch emails from Gmail API');
+      }
+
+      const data = await response.json();
+      const messages = data.messages || [];
       const detectedSubscriptions: DetectedSubscription[] = [];
 
       for (const message of messages) {
         try {
-          const email = await this.gmail.users.messages.get({
-            userId: 'me',
-            id: message.id,
-            format: 'full'
-          });
+          const emailResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
+            {
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
 
-          const subscription = this.extractSubscriptionInfo(email.data, userId);
+          if (!emailResponse.ok) continue;
+
+          const email = await emailResponse.json();
+          const subscription = this.extractSubscriptionInfo(email, userId);
           if (subscription) {
             detectedSubscriptions.push(subscription);
           }
@@ -149,13 +157,21 @@ export class EmailProcessor {
 
   private extractEmailBody(payload: any): string {
     if (payload.body?.data) {
-      return Buffer.from(payload.body.data, 'base64').toString();
+      try {
+        return atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+      } catch (e) {
+        return '';
+      }
     }
     
     if (payload.parts) {
       for (const part of payload.parts) {
         if (part.mimeType === 'text/plain' && part.body?.data) {
-          return Buffer.from(part.body.data, 'base64').toString();
+          try {
+            return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+          } catch (e) {
+            continue;
+          }
         }
       }
     }
