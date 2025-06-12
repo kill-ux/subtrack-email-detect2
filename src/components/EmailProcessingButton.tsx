@@ -21,7 +21,7 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
 
     setProcessing(true);
     try {
-      // Get user's Gmail tokens
+      // Check if user has Gmail authorization
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const userData = userDoc.data();
       
@@ -34,14 +34,20 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         return;
       }
 
-      // Initialize email processor
-      const processor = new EmailProcessor({
-        access_token: userData.gmailTokens?.access_token,
-        refresh_token: userData.gmailTokens?.refresh_token,
-      });
+      if (!userData?.gmailTokens?.access_token) {
+        toast({
+          title: "No Access Token",
+          description: "Gmail access token not found. Please reconnect your account.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Initialize email processor with user ID
+      const processor = new EmailProcessor(user.uid);
 
       // Process emails
-      const detectedSubscriptions = await processor.processEmails(user.uid);
+      const detectedSubscriptions = await processor.processEmails();
       
       toast({
         title: "Email Processing Complete",
@@ -51,9 +57,19 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
       onProcessingComplete();
     } catch (error) {
       console.error('Error processing emails:', error);
+      
+      let errorMessage = "Failed to process emails. Please try again.";
+      if (error instanceof Error) {
+        if (error.message.includes('access token')) {
+          errorMessage = "Gmail access token expired. Please reconnect your account.";
+        } else if (error.message.includes('Gmail API')) {
+          errorMessage = "Gmail API error. Please check your connection and try again.";
+        }
+      }
+      
       toast({
         title: "Processing Failed",
-        description: "Failed to process emails. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
