@@ -8,9 +8,7 @@ import { auth } from '@/lib/firebase';
 import { 
   signInWithEmailAndPassword, 
   signInWithPopup, 
-  signInWithRedirect,
   GoogleAuthProvider, 
-  getRedirectResult,
   onAuthStateChanged
 } from 'firebase/auth';
 import { useToast } from '@/components/ui/use-toast';
@@ -23,27 +21,8 @@ const SignIn = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Handle redirect result and auth state changes
+  // Listen for auth state changes
   useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log('✅ Google redirect sign-in successful');
-          navigate('/dashboard');
-        }
-      } catch (error) {
-        console.error('❌ Redirect sign-in error:', error);
-        setGoogleLoading(false);
-        toast({
-          title: "Authentication Error",
-          description: "Failed to complete Google sign-in. Please try again.",
-          variant: "destructive"
-        });
-      }
-    };
-
-    // Listen for auth state changes
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log('✅ User authenticated:', user.email);
@@ -51,10 +30,8 @@ const SignIn = () => {
       }
     });
 
-    handleRedirectResult();
-
     return () => unsubscribe();
-  }, [navigate, toast]);
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,12 +39,22 @@ const SignIn = () => {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/dashboard');
-    } catch (error) {
+      // Navigation handled by auth state listener
+    } catch (error: any) {
       console.error('❌ Email sign-in error:', error);
+      
+      let errorMessage = "Invalid email or password";
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email";
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = "Incorrect password";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many failed attempts. Please try again later.";
+      }
+      
       toast({
-        title: "Error",
-        description: "Invalid email or password",
+        title: "Sign In Failed",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -80,29 +67,14 @@ const SignIn = () => {
     
     try {
       const provider = new GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      // Only request basic profile info for authentication
+      provider.addScope('profile');
+      provider.addScope('email');
       
-      // Try popup first, fallback to redirect if it fails
-      try {
-        console.log('🔄 Attempting Google popup sign-in...');
-        const result = await signInWithPopup(auth, provider);
-        console.log('✅ Google popup sign-in successful');
-        navigate('/dashboard');
-      } catch (popupError: any) {
-        console.log('⚠️ Popup blocked or failed, trying redirect...', popupError.code);
-        
-        // If popup is blocked or fails, use redirect
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.code === 'auth/cancelled-popup-request') {
-          
-          console.log('🔄 Using redirect method...');
-          await signInWithRedirect(auth, provider);
-          // Don't set loading to false here as redirect will reload the page
-        } else {
-          throw popupError;
-        }
-      }
+      console.log('🔄 Attempting Google authentication...');
+      const result = await signInWithPopup(auth, provider);
+      console.log('✅ Google authentication successful');
+      // Navigation handled by auth state listener
     } catch (error: any) {
       console.error('❌ Google sign-in error:', error);
       setGoogleLoading(false);
@@ -112,6 +84,8 @@ const SignIn = () => {
         errorMessage = "Popup was blocked. Please allow popups and try again.";
       } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = "Sign-in was cancelled. Please try again.";
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        errorMessage = "An account already exists with this email using a different sign-in method.";
       }
       
       toast({
@@ -207,7 +181,7 @@ const SignIn = () => {
             <div className="mt-4 text-center">
               <div className="inline-flex items-center gap-2 text-sm text-blue-600">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span>Connecting to Google...</span>
+                <span>Authenticating with Google...</span>
               </div>
             </div>
           )}

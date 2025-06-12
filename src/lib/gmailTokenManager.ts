@@ -9,15 +9,17 @@ export interface GmailTokens {
   expires_in: number;
   expires_at: string;
   obtained_at: string;
+  target_email: string; // The email address these tokens are for
 }
 
-export interface UserGmailData {
+export interface UserEmailData {
   userId: string;
-  email: string;
+  authUserEmail: string; // Email used for authentication
+  targetEmail: string; // Email to scan for subscriptions
   displayName?: string;
   gmailAuthorized: boolean;
-  authInProgress: boolean;
-  authCompletedAt?: string;
+  emailSetupInProgress: boolean;
+  emailSetupCompletedAt?: string;
   gmailAuthCode?: string;
   gmailTokens?: GmailTokens;
   updatedAt: string;
@@ -45,7 +47,7 @@ export class GmailTokenManager {
         return null;
       }
 
-      const userData = userDoc.data() as UserGmailData;
+      const userData = userDoc.data() as UserEmailData;
       
       if (!userData.gmailAuthorized) {
         console.error(`❌ Gmail not authorized for user: ${this.userId}`);
@@ -57,7 +59,12 @@ export class GmailTokenManager {
         return null;
       }
 
-      console.log(`✅ Retrieved Gmail tokens for user: ${this.userId}`);
+      if (!userData.targetEmail) {
+        console.error(`❌ No target email configured for user: ${this.userId}`);
+        return null;
+      }
+
+      console.log(`✅ Retrieved Gmail tokens for user: ${this.userId}, target email: ${userData.targetEmail}`);
       return userData.gmailTokens;
     } catch (error) {
       console.error('❌ Error getting Gmail tokens:', error);
@@ -88,7 +95,7 @@ export class GmailTokenManager {
 
       // Token is expired or about to expire, refresh it
       console.log(`🔄 Access token expired for user: ${this.userId}, refreshing...`);
-      const newTokens = await this.refreshTokens(tokens.refresh_token);
+      const newTokens = await this.refreshTokens(tokens.refresh_token, tokens.target_email);
       
       if (newTokens) {
         return newTokens.access_token;
@@ -104,7 +111,7 @@ export class GmailTokenManager {
   /**
    * Refresh the access token using the refresh token
    */
-  async refreshTokens(refreshToken: string): Promise<GmailTokens | null> {
+  async refreshTokens(refreshToken: string, targetEmail: string): Promise<GmailTokens | null> {
     try {
       const clientId = '616003184852-2sjlhqid5sfme4lg3q3n1c6bc14sc7tv.apps.googleusercontent.com';
       const clientSecret = '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';
@@ -138,13 +145,14 @@ export class GmailTokenManager {
         token_type: newTokenData.token_type || 'Bearer',
         expires_in: newTokenData.expires_in,
         expires_at: new Date(Date.now() + (newTokenData.expires_in * 1000)).toISOString(),
-        obtained_at: new Date().toISOString()
+        obtained_at: new Date().toISOString(),
+        target_email: targetEmail
       };
 
       // Update tokens in Firebase
       await this.saveTokens(newTokens);
       
-      console.log(`✅ Tokens refreshed successfully for user: ${this.userId}`);
+      console.log(`✅ Tokens refreshed successfully for user: ${this.userId}, target email: ${targetEmail}`);
       return newTokens;
     } catch (error) {
       console.error('❌ Error refreshing tokens:', error);
@@ -165,7 +173,7 @@ export class GmailTokenManager {
         updatedAt: new Date().toISOString()
       });
 
-      console.log(`✅ Tokens saved successfully for user: ${this.userId}`);
+      console.log(`✅ Tokens saved successfully for user: ${this.userId}, target email: ${tokens.target_email}`);
     } catch (error) {
       console.error('❌ Error saving tokens:', error);
       throw error;
@@ -184,11 +192,43 @@ export class GmailTokenManager {
         return false;
       }
 
-      const userData = userDoc.data() as UserGmailData;
-      return userData.gmailAuthorized === true && !!userData.gmailTokens;
+      const userData = userDoc.data() as UserEmailData;
+      return userData.gmailAuthorized === true && !!userData.gmailTokens && !!userData.targetEmail;
     } catch (error) {
       console.error('❌ Error checking Gmail authorization:', error);
       return false;
+    }
+  }
+
+  /**
+   * Get user's email configuration and authorization status
+   */
+  async getAuthStatus(): Promise<UserEmailData | null> {
+    try {
+      const userDocRef = doc(db, 'users', this.userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        return null;
+      }
+
+      return userDoc.data() as UserEmailData;
+    } catch (error) {
+      console.error('❌ Error getting auth status:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get the target email address for this user
+   */
+  async getTargetEmail(): Promise<string | null> {
+    try {
+      const authStatus = await this.getAuthStatus();
+      return authStatus?.targetEmail || null;
+    } catch (error) {
+      console.error('❌ Error getting target email:', error);
+      return null;
     }
   }
 
@@ -212,7 +252,8 @@ export class GmailTokenManager {
         gmailAuthorized: false,
         gmailTokens: null,
         gmailAuthCode: null,
-        authInProgress: false,
+        emailSetupInProgress: false,
+        targetEmail: null,
         updatedAt: new Date().toISOString()
       });
 
@@ -220,25 +261,6 @@ export class GmailTokenManager {
     } catch (error) {
       console.error('❌ Error revoking authorization:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Get user's Gmail authorization status and metadata
-   */
-  async getAuthStatus(): Promise<UserGmailData | null> {
-    try {
-      const userDocRef = doc(db, 'users', this.userId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        return null;
-      }
-
-      return userDoc.data() as UserGmailData;
-    } catch (error) {
-      console.error('❌ Error getting auth status:', error);
-      return null;
     }
   }
 }

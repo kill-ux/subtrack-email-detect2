@@ -40,6 +40,8 @@ const Login = () => {
         errorMessage = "An account with this email already exists";
       } else if (error.code === 'auth/weak-password') {
         errorMessage = "Password should be at least 6 characters";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Please enter a valid email address";
       }
       toast({
         title: "Error",
@@ -56,7 +58,9 @@ const Login = () => {
     
     try {
       const provider = new GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      // Only request basic profile info for authentication
+      provider.addScope('profile');
+      provider.addScope('email');
       
       const result = await signInWithPopup(auth, provider);
       console.log('✅ Google sign-up successful');
@@ -70,6 +74,8 @@ const Login = () => {
         errorMessage = "Popup was blocked. Please allow popups and try again.";
       } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = "Sign-up was cancelled. Please try again.";
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        errorMessage = "An account already exists with this email using a different sign-in method.";
       }
       
       toast({

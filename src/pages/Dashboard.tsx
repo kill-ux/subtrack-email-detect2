@@ -7,8 +7,8 @@ import { DynamicSpendingChart } from "@/components/DynamicSpendingChart";
 import { DynamicUpcomingPayments } from "@/components/DynamicUpcomingPayments";
 import { DetailsSidebar } from "@/components/DetailsSidebar";
 import { EmailProcessingButton } from "@/components/EmailProcessingButton";
+import { EmailSetupDialog } from "@/components/EmailSetupDialog";
 import { useState, useEffect } from "react";
-import { GmailAuthDialog } from "@/components/GmailAuthDialog";
 import { useAuth } from "@/lib/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -17,21 +17,26 @@ import { DetectedSubscription } from "@/lib/emailProcessor";
 
 const Dashboard = () => {
   const [showDetails, setShowDetails] = useState(false);
-  const [showGmailAuth, setShowGmailAuth] = useState(false);
+  const [showEmailSetup, setShowEmailSetup] = useState(false);
   const [subscriptions, setSubscriptions] = useState<DetectedSubscription[]>([]);
   const [stats, setStats] = useState<SubscriptionStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasEmailAccess, setHasEmailAccess] = useState(false);
   const { user } = useAuth();
   const subscriptionService = new SubscriptionService();
 
   useEffect(() => {
-    const checkGmailAuthAndLoadData = async () => {
+    const checkEmailAccessAndLoadData = async () => {
       if (user) {
         const userDoc = await getDoc(doc(db, "users", user.uid));
-        const hasGmailAuth = userDoc.exists() && userDoc.data()?.gmailAuthorized;
+        const userData = userDoc.data();
+        const hasGmailAuth = userData?.gmailAuthorized === true;
+        const hasTargetEmail = !!userData?.targetEmail;
         
-        if (!hasGmailAuth) {
-          setShowGmailAuth(true);
+        setHasEmailAccess(hasGmailAuth && hasTargetEmail);
+        
+        if (!hasGmailAuth || !hasTargetEmail) {
+          setShowEmailSetup(true);
           setLoading(false);
         } else {
           await loadSubscriptionData();
@@ -39,7 +44,7 @@ const Dashboard = () => {
       }
     };
 
-    checkGmailAuthAndLoadData();
+    checkEmailAccessAndLoadData();
   }, [user]);
 
   const loadSubscriptionData = async () => {
@@ -65,8 +70,9 @@ const Dashboard = () => {
     loadSubscriptionData();
   };
 
-  const handleGmailAuthComplete = () => {
-    setShowGmailAuth(false);
+  const handleEmailSetupComplete = () => {
+    setShowEmailSetup(false);
+    setHasEmailAccess(true);
     loadSubscriptionData();
   };
 
@@ -78,27 +84,43 @@ const Dashboard = () => {
           <div className="flex items-center gap-4 border-b px-6 py-3">
             <SidebarTrigger />
             <DashboardHeader onShowDetails={() => setShowDetails(true)} />
-            <EmailProcessingButton onProcessingComplete={handleProcessingComplete} />
+            {hasEmailAccess && (
+              <EmailProcessingButton onProcessingComplete={handleProcessingComplete} />
+            )}
           </div>
           <div className="flex-1 p-6 space-y-6">
-            <DynamicStatsCards stats={stats} loading={loading} />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <DynamicSpendingChart stats={stats} loading={loading} />
+            {hasEmailAccess ? (
+              <>
+                <DynamicStatsCards stats={stats} loading={loading} />
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2">
+                    <DynamicSpendingChart stats={stats} loading={loading} />
+                  </div>
+                  <div>
+                    <DynamicUpcomingPayments stats={stats} loading={loading} />
+                  </div>
+                </div>
+                <DynamicSubscriptionsList subscriptions={subscriptions} loading={loading} />
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold mb-2">Email Setup Required</h2>
+                  <p className="text-muted-foreground mb-4">
+                    Please set up email access to start tracking your subscriptions
+                  </p>
+                </div>
               </div>
-              <div>
-                <DynamicUpcomingPayments stats={stats} loading={loading} />
-              </div>
-            </div>
-            <DynamicSubscriptionsList subscriptions={subscriptions} loading={loading} />
+            )}
           </div>
         </main>
         {showDetails && (
           <DetailsSidebar onClose={() => setShowDetails(false)} />
         )}
-        <GmailAuthDialog 
-          open={showGmailAuth} 
-          onOpenChange={setShowGmailAuth}
+        <EmailSetupDialog 
+          open={showEmailSetup} 
+          onOpenChange={setShowEmailSetup}
+          onComplete={handleEmailSetupComplete}
         />
       </div>
     </SidebarProvider>
