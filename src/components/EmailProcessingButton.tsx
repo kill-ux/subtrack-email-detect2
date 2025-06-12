@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Mail, Loader2, Database, Key, CheckCircle, AlertCircle } from "lucide-react";
+import { Mail, Loader2, Database, Key, CheckCircle, AlertCircle, Calendar, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { EmailProcessor } from "@/lib/emailProcessor";
 import { GmailTokenManager } from "@/lib/gmailTokenManager";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface EmailProcessingButtonProps {
   onProcessingComplete: () => void;
@@ -14,8 +20,21 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
   const [processing, setProcessing] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>({});
   const [currentStep, setCurrentStep] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Generate available years (current year + 5 years back)
+  const getAvailableYears = () => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = 0; i <= 5; i++) {
+      years.push(currentYear - i);
+    }
+    return years;
+  };
+
+  const availableYears = getAvailableYears();
 
   const handleProcessEmails = async () => {
     if (!user) {
@@ -32,7 +51,7 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
     setCurrentStep('Initializing...');
     
     try {
-      console.log(`🚀 Starting email processing for user: ${user.uid}`);
+      console.log(`🚀 Starting email processing for user: ${user.uid} (Year: ${selectedYear})`);
       
       setCurrentStep('Checking Gmail authorization...');
       
@@ -45,6 +64,7 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         ...prev,
         userId: user.uid,
         userEmail: user.email,
+        selectedYear: selectedYear,
         authStatus: authStatus ? 'Found' : 'Not found',
         gmailAuthorized: authStatus?.gmailAuthorized || false,
         hasTokens: !!authStatus?.gmailTokens
@@ -89,18 +109,18 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
 
       setCurrentStep('Connecting to Gmail API...');
       
-      // Initialize email processor
+      // Initialize email processor with year filter
       const processor = new EmailProcessor(user.uid);
 
-      // Process emails
-      setCurrentStep('Scanning emails for subscriptions...');
+      // Process emails for the selected year
+      setCurrentStep(`Scanning ${selectedYear} emails for subscriptions...`);
       
       toast({
         title: "Processing Started",
-        description: "Scanning your emails for subscriptions...",
+        description: `Scanning your ${selectedYear} emails for subscriptions...`,
       });
 
-      const detectedSubscriptions = await processor.processEmails();
+      const detectedSubscriptions = await processor.processEmailsForYear(selectedYear);
       
       setCurrentStep('Processing complete!');
       
@@ -108,14 +128,17 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         ...prev,
         subscriptionsFound: detectedSubscriptions.length,
         processingComplete: true,
+        yearProcessed: selectedYear,
         stackBlitzFound: detectedSubscriptions.filter(sub => 
           sub.serviceName.toLowerCase().includes('stackblitz')
-        ).length
+        ).length,
+        currenciesFound: [...new Set(detectedSubscriptions.map(sub => sub.currency))],
+        languagesDetected: [...new Set(detectedSubscriptions.map(sub => sub.language).filter(Boolean))]
       }));
 
       toast({
         title: "Email Processing Complete",
-        description: `Found ${detectedSubscriptions.length} subscriptions`,
+        description: `Found ${detectedSubscriptions.length} subscriptions from ${selectedYear}`,
       });
 
       onProcessingComplete();
@@ -158,18 +181,48 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
 
   return (
     <div className="flex flex-col gap-2">
-      <Button 
-        onClick={handleProcessEmails} 
-        disabled={processing}
-        className="gap-2"
-      >
-        {processing ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Mail className="h-4 w-4" />
-        )}
-        {processing ? "Processing Emails..." : "Scan Emails"}
-      </Button>
+      <div className="flex items-center gap-2">
+        {/* Year Selector */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={processing} className="gap-2">
+              <Calendar className="h-4 w-4" />
+              {selectedYear}
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {availableYears.map((year) => (
+              <DropdownMenuItem
+                key={year}
+                onClick={() => setSelectedYear(year)}
+                className={selectedYear === year ? "bg-accent" : ""}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span>{year}</span>
+                  {year === new Date().getFullYear() && (
+                    <span className="text-xs text-muted-foreground ml-2">Current</span>
+                  )}
+                </div>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Process Button */}
+        <Button 
+          onClick={handleProcessEmails} 
+          disabled={processing}
+          className="gap-2"
+        >
+          {processing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Mail className="h-4 w-4" />
+          )}
+          {processing ? `Processing ${selectedYear}...` : `Scan ${selectedYear} Emails`}
+        </Button>
+      </div>
 
       {/* Current Step Indicator */}
       {processing && currentStep && (
@@ -179,12 +232,12 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         </div>
       )}
 
-      {/* Debug Information */}
+      {/* Enhanced Debug Information */}
       {Object.keys(debugInfo).length > 0 && (
         <div className="text-xs bg-gray-100 p-2 rounded max-w-xs">
           <div className="flex items-center gap-1 mb-1">
             <Database className="h-3 w-3" />
-            <span className="font-medium">Debug Info:</span>
+            <span className="font-medium">Processing Info:</span>
           </div>
           <div className="space-y-1">
             {debugInfo.userId && (
@@ -192,6 +245,9 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
             )}
             {debugInfo.userEmail && (
               <div><strong>Email:</strong> {debugInfo.userEmail}</div>
+            )}
+            {debugInfo.selectedYear && (
+              <div><strong>Year:</strong> {debugInfo.selectedYear}</div>
             )}
             {debugInfo.authStatus && (
               <div><strong>Auth Status:</strong> {debugInfo.authStatus}</div>
@@ -207,6 +263,15 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
             )}
             {debugInfo.subscriptionsFound !== undefined && (
               <div><strong>Found:</strong> {debugInfo.subscriptionsFound} subscriptions</div>
+            )}
+            {debugInfo.yearProcessed && (
+              <div><strong>Year Processed:</strong> {debugInfo.yearProcessed}</div>
+            )}
+            {debugInfo.currenciesFound && debugInfo.currenciesFound.length > 0 && (
+              <div><strong>Currencies:</strong> {debugInfo.currenciesFound.join(', ')}</div>
+            )}
+            {debugInfo.languagesDetected && debugInfo.languagesDetected.length > 0 && (
+              <div><strong>Languages:</strong> {debugInfo.languagesDetected.join(', ')}</div>
             )}
             {debugInfo.stackBlitzFound !== undefined && debugInfo.stackBlitzFound > 0 && (
               <div className="text-green-600"><strong>StackBlitz:</strong> {debugInfo.stackBlitzFound} found! 🎉</div>

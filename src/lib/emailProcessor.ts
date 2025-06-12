@@ -20,6 +20,7 @@ export interface DetectedSubscription {
   receiptType: string;
   language?: string;
   region?: string;
+  yearProcessed?: number; // Track which year this was processed from
 }
 
 // ULTRA-STRICT: Only these exact receipt keywords (Multi-language)
@@ -346,9 +347,12 @@ export class EmailProcessor {
     this.tokenManager = new GmailTokenManager(userId);
   }
 
-  async processEmails(): Promise<DetectedSubscription[]> {
+  /**
+   * NEW: Process emails for a specific year
+   */
+  async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🌍 Starting SMART MULTI-CURRENCY receipt processing (MAD, EUR, USD + 20+ currencies) for user: ${this.userId}`);
+      console.log(`🗓️ Starting YEAR-SPECIFIC processing for ${year} (user: ${this.userId})`);
       
       // Check authorization
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
@@ -361,61 +365,56 @@ export class EmailProcessor {
         throw new Error('Unable to obtain valid access token');
       }
 
-      console.log(`✅ Valid access token obtained for user: ${this.userId}`);
+      console.log(`✅ Valid access token obtained for year ${year} processing`);
 
-      // ENHANCED MULTI-LANGUAGE SEARCH
+      // YEAR-SPECIFIC SEARCH QUERIES
       const searchQueries = [
-        // English receipt searches
-        'subject:receipt', 'subject:"payment receipt"', 'subject:"billing receipt"',
-        'subject:"subscription receipt"', 'subject:"your receipt"',
+        // English receipt searches for specific year
+        `subject:receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `subject:"payment receipt" after:${year}/01/01 before:${year + 1}/01/01`,
+        `subject:"billing receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Arabic receipt searches
-        'subject:إيصال', 'subject:فاتورة', 'subject:"إيصال دفع"', 'subject:"تأكيد الدفع"',
+        // Arabic receipt searches for specific year
+        `subject:إيصال after:${year}/01/01 before:${year + 1}/01/01`,
+        `subject:فاتورة after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // French receipt searches (Morocco/Europe)
-        'subject:reçu', 'subject:facture', 'subject:"reçu de paiement"',
-        'subject:"confirmation de paiement"', 'subject:"facture d\'abonnement"',
+        // French receipt searches for specific year
+        `subject:reçu after:${year}/01/01 before:${year + 1}/01/01`,
+        `subject:facture after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Spanish receipt searches
-        'subject:recibo', 'subject:factura', 'subject:"recibo de pago"',
+        // Service-specific searches for specific year
+        `from:tinder receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:stackblitz receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:stripe receipt after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // German receipt searches
-        'subject:quittung', 'subject:rechnung', 'subject:"zahlungsbestätigung"',
+        // Currency-specific searches for specific year
+        `MAD receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `EUR receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `dirham receipt after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Currency-specific searches
-        'MAD receipt', 'dirham receipt', 'EUR receipt', 'euro receipt',
-        'DH receipt', 'درهم receipt',
+        // Regional services for specific year
+        `from:orange.ma receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:inwi.ma receipt after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Service-specific searches
-        'from:tinder receipt', 'tinder plus receipt', 'tinder gold receipt',
-        'from:stackblitz receipt', 'from:stripe receipt',
-        'google play receipt', 'play store receipt',
+        // Gaming and apps for specific year
+        `google play receipt after:${year}/01/01 before:${year + 1}/01/01`,
+        `candy crush receipt after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Regional services
-        'from:orange.ma receipt', 'from:inwi.ma receipt', 'from:iam.ma receipt',
-        'from:canalplus receipt', 'from:deezer receipt',
-        'from:shahid receipt', 'from:anghami receipt',
-        
-        // Gaming and apps
-        'candy crush receipt', 'clash of clans receipt', 'pokemon go receipt',
-        'roblox receipt', 'minecraft receipt',
-        
-        // Comprehensive searches
-        'subscription confirmation', 'billing confirmation', 'payment processed',
-        'تأكيد الاشتراك', 'تأكيد الفاتورة', 'confirmation d\'abonnement'
+        // General subscription confirmations for specific year
+        `subscription confirmation after:${year}/01/01 before:${year + 1}/01/01`,
+        `billing confirmation after:${year}/01/01 before:${year + 1}/01/01`,
+        `payment processed after:${year}/01/01 before:${year + 1}/01/01`
       ];
 
-      const oneYearAgo = this.getDateOneYearAgo();
       const detectedSubscriptions: DetectedSubscription[] = [];
       const processedEmailIds = new Set<string>();
       
-      // Process each search query
+      // Process each search query for the specific year
       for (const searchQuery of searchQueries) {
-        const fullQuery = `${searchQuery} after:${oneYearAgo}`;
-        console.log(`🔍 SMART MULTI-CURRENCY search: ${fullQuery}`);
+        console.log(`🔍 YEAR-SPECIFIC search (${year}): ${searchQuery}`);
         
         const response = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(fullQuery)}&maxResults=50`,
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=100`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -432,9 +431,9 @@ export class EmailProcessor {
         const data = await response.json();
         const messages = data.messages || [];
         
-        console.log(`📧 Found ${messages.length} emails for query: ${searchQuery}`);
+        console.log(`📧 Found ${messages.length} emails for ${year} query: ${searchQuery.split(' ')[0]}...`);
 
-        // Process each email with SMART MULTI-CURRENCY validation
+        // Process each email with year-specific validation
         for (const message of messages) {
           if (processedEmailIds.has(message.id)) {
             continue;
@@ -458,7 +457,7 @@ export class EmailProcessor {
             }
 
             const email = await emailResponse.json();
-            const subscription = this.validateReceiptEmail(email);
+            const subscription = this.validateReceiptEmailForYear(email, year);
             
             if (subscription) {
               // Check for duplicates
@@ -470,7 +469,7 @@ export class EmailProcessor {
               
               if (!isDuplicate) {
                 detectedSubscriptions.push(subscription);
-                console.log(`✅ SMART MULTI-CURRENCY RECEIPT: ${subscription.serviceName} - ${subscription.currency} ${subscription.amount} (${subscription.language || 'en'}) (confidence: ${subscription.confidence})`);
+                console.log(`✅ YEAR-SPECIFIC RECEIPT (${year}): ${subscription.serviceName} - ${subscription.currency} ${subscription.amount} (${subscription.language || 'en'}) (confidence: ${subscription.confidence})`);
               }
             }
           } catch (error) {
@@ -479,29 +478,49 @@ export class EmailProcessor {
         }
       }
 
-      console.log(`🎯 SMART MULTI-CURRENCY detection found ${detectedSubscriptions.length} valid receipts for user: ${this.userId}`);
+      console.log(`🎯 YEAR-SPECIFIC detection (${year}) found ${detectedSubscriptions.length} valid receipts for user: ${this.userId}`);
 
-      // Save to Firebase
-      await this.saveSubscriptions(detectedSubscriptions);
+      // Save to Firebase with year information
+      await this.saveSubscriptionsForYear(detectedSubscriptions, year);
       
       return detectedSubscriptions;
     } catch (error) {
-      console.error(`❌ Error processing emails for user ${this.userId}:`, error);
+      console.error(`❌ Error processing ${year} emails for user ${this.userId}:`, error);
       throw error;
     }
   }
 
-  private validateReceiptEmail(email: any): DetectedSubscription | null {
+  /**
+   * Original method - now calls processEmailsForYear with current year
+   */
+  async processEmails(): Promise<DetectedSubscription[]> {
+    const currentYear = new Date().getFullYear();
+    return this.processEmailsForYear(currentYear);
+  }
+
+  /**
+   * Enhanced validation with year context
+   */
+  private validateReceiptEmailForYear(email: any, year: number): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
     const date = headers.find((h: any) => h.name === 'Date')?.value || '';
 
+    // Verify email is actually from the specified year
+    const emailDate = new Date(date);
+    const emailYear = emailDate.getFullYear();
+    
+    if (emailYear !== year) {
+      console.log(`❌ REJECTED: Email from ${emailYear}, expected ${year}`);
+      return null;
+    }
+
     // Enhanced email body extraction
     const body = this.extractEmailBodyWithDebug(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
-    console.log(`🧾 SMART MULTI-CURRENCY validation: "${subject}" from "${from}"`);
+    console.log(`🧾 YEAR-SPECIFIC validation (${year}): "${subject}" from "${from}"`);
 
     // STEP 1: Detect language and region
     const languageInfo = this.detectLanguageAndRegion(fullText);
@@ -616,10 +635,11 @@ export class EmailProcessor {
       confidence: Math.min(confidence, 1.0),
       receiptType: 'payment_receipt',
       language: languageInfo.language,
-      region: languageInfo.region
+      region: languageInfo.region,
+      yearProcessed: year // Track which year this was processed from
     };
 
-    console.log(`✅ SMART MULTI-CURRENCY RECEIPT: ${serviceInfo.name} - ${amount.currency} ${amount.value} (${languageInfo.language}/${languageInfo.region}) (confidence: ${confidence})`);
+    console.log(`✅ YEAR-SPECIFIC RECEIPT (${year}): ${serviceInfo.name} - ${amount.currency} ${amount.value} (${languageInfo.language}/${languageInfo.region}) (confidence: ${confidence})`);
     return subscription;
   }
 
@@ -1021,36 +1041,52 @@ export class EmailProcessor {
     return date.toISOString().split('T')[0].replace(/-/g, '/');
   }
 
-  private async saveSubscriptions(subscriptions: DetectedSubscription[]): Promise<void> {
+  /**
+   * Enhanced save method with year tracking
+   */
+  private async saveSubscriptionsForYear(subscriptions: DetectedSubscription[], year: number): Promise<void> {
     const subscriptionsRef = collection(db, 'subscriptions');
 
     for (const subscription of subscriptions) {
       try {
-        // Check if subscription already exists
+        // Check if subscription already exists for this year
         const q = query(
           subscriptionsRef,
           where('userId', '==', subscription.userId),
-          where('emailId', '==', subscription.emailId)
+          where('emailId', '==', subscription.emailId),
+          where('yearProcessed', '==', year)
         );
         
         const existingDocs = await getDocs(q);
         
         if (existingDocs.empty) {
-          // Add new subscription
-          await addDoc(subscriptionsRef, subscription);
-          console.log(`✅ Added SMART MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
+          // Add new subscription with year tracking
+          await addDoc(subscriptionsRef, {
+            ...subscription,
+            yearProcessed: year
+          });
+          console.log(`✅ Added YEAR-SPECIFIC subscription (${year}): ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
         } else {
           // Update existing subscription
           const docRef = doc(db, 'subscriptions', existingDocs.docs[0].id);
           await updateDoc(docRef, {
             ...subscription,
+            yearProcessed: year,
             updatedAt: new Date().toISOString()
           });
-          console.log(`🔄 Updated SMART MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
+          console.log(`🔄 Updated YEAR-SPECIFIC subscription (${year}): ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
         }
       } catch (error) {
-        console.error(`❌ Error saving subscription ${subscription.serviceName} for user ${this.userId}:`, error);
+        console.error(`❌ Error saving subscription ${subscription.serviceName} for year ${year} for user ${this.userId}:`, error);
       }
     }
+  }
+
+  /**
+   * Original save method - now calls saveSubscriptionsForYear with current year
+   */
+  private async saveSubscriptions(subscriptions: DetectedSubscription[]): Promise<void> {
+    const currentYear = new Date().getFullYear();
+    return this.saveSubscriptionsForYear(subscriptions, currentYear);
   }
 }
