@@ -272,31 +272,69 @@ const CURRENCY_PATTERNS = [
   { pattern: /(\d+\.\d{2})/g, currency: 'USD', symbol: '$', regions: ['global'] } // Fallback
 ];
 
-// STRICT EXCLUSIONS - automatically reject these (Multi-language)
-const STRICT_EXCLUSIONS = [
+// SMART EXCLUSIONS - Context-aware rejection patterns (Multi-language)
+const SMART_EXCLUSIONS = [
+  // Only exclude if these appear WITHOUT receipt context
+  {
+    patterns: ['order confirmation', 'shipping confirmation', 'delivery confirmation'],
+    allowIf: ['receipt', 'payment', 'billing', 'charged']
+  },
+  {
+    patterns: ['welcome', 'getting started', 'account created'],
+    allowIf: ['receipt', 'payment', 'subscription']
+  },
+  {
+    patterns: ['password reset', 'security alert', 'verification'],
+    allowIf: [] // Never allow these
+  },
+  {
+    patterns: ['promotional', 'marketing', 'newsletter'],
+    allowIf: [] // Never allow these
+  },
+  {
+    patterns: ['free trial started', 'trial started'],
+    allowIf: ['receipt', 'payment', 'charged'] // Allow if it's a receipt for trial conversion
+  },
+  {
+    patterns: ['gift card', 'one-time purchase'],
+    allowIf: ['subscription', 'recurring'] // Allow if it mentions subscription
+  },
+  
+  // Arabic exclusions
+  {
+    patterns: ['مرحبا', 'البدء', 'إنشاء الحساب'],
+    allowIf: ['إيصال', 'دفع', 'اشتراك']
+  },
+  {
+    patterns: ['ترويجي', 'تسويق', 'نشرة إخبارية'],
+    allowIf: []
+  },
+  
+  // French exclusions
+  {
+    patterns: ['bienvenue', 'commencer', 'compte créé'],
+    allowIf: ['reçu', 'paiement', 'abonnement']
+  },
+  {
+    patterns: ['promotionnel', 'marketing', 'newsletter'],
+    allowIf: []
+  }
+];
+
+// HARD EXCLUSIONS - Always reject these
+const HARD_EXCLUSIONS = [
   // English
-  'order confirmation', 'shipping', 'delivered', 'tracking', 'refund', 'return',
-  'cancelled order', 'welcome', 'getting started', 'password reset', 'security alert',
-  'promotional', 'marketing', 'newsletter', 'free trial started', 'trial started',
-  'account created', 'verification', 'one-time purchase', 'gift card', 'app store', 'google play',
+  'password reset', 'security alert', 'account verification', 'email verification',
+  'promotional offer', 'marketing email', 'newsletter subscription',
+  'spam', 'phishing', 'fraud alert',
   
   // Arabic
-  'تأكيد الطلب', 'الشحن', 'تم التوصيل', 'تتبع الطلب', 'استرداد', 'إرجاع',
-  'إلغاء الطلب', 'مرحبا', 'البدء', 'إعادة تعيين كلمة المرور', 'تنبيه أمني',
-  'ترويجي', 'تسويق', 'نشرة إخبارية', 'بدء التجربة المجانية',
+  'إعادة تعيين كلمة المرور', 'تنبيه أمني', 'تحقق من الحساب',
+  'عرض ترويجي', 'بريد تسويقي', 'اشتراك النشرة',
   
   // French
-  'confirmation de commande', 'expédition', 'livré', 'suivi', 'remboursement', 'retour',
-  'commande annulée', 'bienvenue', 'commencer', 'réinitialisation du mot de passe',
-  'promotionnel', 'marketing', 'newsletter', 'essai gratuit commencé',
-  
-  // Spanish
-  'confirmación de pedido', 'envío', 'entregado', 'seguimiento', 'reembolso', 'devolución',
-  'pedido cancelado', 'bienvenido', 'empezar', 'restablecimiento de contraseña',
-  
-  // German
-  'bestellbestätigung', 'versand', 'geliefert', 'verfolgung', 'rückerstattung', 'rücksendung',
-  'bestellung storniert', 'willkommen', 'erste schritte', 'passwort zurücksetzen'
+  'réinitialisation du mot de passe', 'alerte de sécurité', 'vérification du compte',
+  'offre promotionnelle', 'email marketing', 'abonnement newsletter'
 ];
 
 export class EmailProcessor {
@@ -310,7 +348,7 @@ export class EmailProcessor {
 
   async processEmails(): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🌍 Starting MULTI-CURRENCY receipt processing (MAD, EUR, USD + 20+ currencies) for user: ${this.userId}`);
+      console.log(`🌍 Starting SMART MULTI-CURRENCY receipt processing (MAD, EUR, USD + 20+ currencies) for user: ${this.userId}`);
       
       // Check authorization
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
@@ -374,7 +412,7 @@ export class EmailProcessor {
       // Process each search query
       for (const searchQuery of searchQueries) {
         const fullQuery = `${searchQuery} after:${oneYearAgo}`;
-        console.log(`🔍 MULTI-CURRENCY search: ${fullQuery}`);
+        console.log(`🔍 SMART MULTI-CURRENCY search: ${fullQuery}`);
         
         const response = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(fullQuery)}&maxResults=50`,
@@ -396,7 +434,7 @@ export class EmailProcessor {
         
         console.log(`📧 Found ${messages.length} emails for query: ${searchQuery}`);
 
-        // Process each email with MULTI-CURRENCY validation
+        // Process each email with SMART MULTI-CURRENCY validation
         for (const message of messages) {
           if (processedEmailIds.has(message.id)) {
             continue;
@@ -432,7 +470,7 @@ export class EmailProcessor {
               
               if (!isDuplicate) {
                 detectedSubscriptions.push(subscription);
-                console.log(`✅ MULTI-CURRENCY RECEIPT: ${subscription.serviceName} - ${subscription.currency} ${subscription.amount} (${subscription.language || 'en'}) (confidence: ${subscription.confidence})`);
+                console.log(`✅ SMART MULTI-CURRENCY RECEIPT: ${subscription.serviceName} - ${subscription.currency} ${subscription.amount} (${subscription.language || 'en'}) (confidence: ${subscription.confidence})`);
               }
             }
           } catch (error) {
@@ -441,7 +479,7 @@ export class EmailProcessor {
         }
       }
 
-      console.log(`🎯 MULTI-CURRENCY detection found ${detectedSubscriptions.length} valid receipts for user: ${this.userId}`);
+      console.log(`🎯 SMART MULTI-CURRENCY detection found ${detectedSubscriptions.length} valid receipts for user: ${this.userId}`);
 
       // Save to Firebase
       await this.saveSubscriptions(detectedSubscriptions);
@@ -463,7 +501,7 @@ export class EmailProcessor {
     const body = this.extractEmailBodyWithDebug(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
-    console.log(`🧾 MULTI-CURRENCY validation: "${subject}" from "${from}"`);
+    console.log(`🧾 SMART MULTI-CURRENCY validation: "${subject}" from "${from}"`);
 
     // STEP 1: Detect language and region
     const languageInfo = this.detectLanguageAndRegion(fullText);
@@ -479,15 +517,22 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 3: STRICT EXCLUSIONS
-    for (const exclusion of STRICT_EXCLUSIONS) {
+    // STEP 3: SMART EXCLUSIONS - Context-aware filtering
+    const shouldExclude = this.checkSmartExclusions(fullText);
+    if (shouldExclude) {
+      console.log(`❌ REJECTED: Smart exclusion triggered: ${shouldExclude}`);
+      return null;
+    }
+
+    // STEP 4: HARD EXCLUSIONS - Always reject these
+    for (const exclusion of HARD_EXCLUSIONS) {
       if (fullText.includes(exclusion)) {
-        console.log(`❌ REJECTED: Contains exclusion pattern: ${exclusion}`);
+        console.log(`❌ REJECTED: Hard exclusion pattern: ${exclusion}`);
         return null;
       }
     }
 
-    // STEP 4: MUST contain financial transaction terms
+    // STEP 5: MUST contain financial transaction terms
     const hasFinancialTerms = REQUIRED_FINANCIAL_TERMS.some(term => 
       fullText.includes(term)
     );
@@ -497,21 +542,21 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 5: ENHANCED multi-currency amount extraction
+    // STEP 6: ENHANCED multi-currency amount extraction
     const amount = this.extractAmountWithAllCurrencies(fullText, body, subject, languageInfo);
     if (!amount || amount.value < 1 || amount.value > 2000) { // Increased limit for different currencies
       console.log(`❌ REJECTED: Invalid amount: ${amount?.value} ${amount?.currency}`);
       return null;
     }
 
-    // STEP 6: ENHANCED service identification (300+ services)
+    // STEP 7: ENHANCED service identification (300+ services)
     const serviceInfo = this.identifyGlobalService(subject, from, fullText, languageInfo);
     if (!serviceInfo) {
       console.log(`❌ REJECTED: Unknown service`);
       return null;
     }
 
-    // STEP 7: Enhanced subscription detection
+    // STEP 8: Enhanced subscription detection
     const subscriptionTerms = [
       // English
       'subscription', 'recurring', 'monthly', 'annual', 'plan', 'membership', 'pro', 'premium',
@@ -574,8 +619,31 @@ export class EmailProcessor {
       region: languageInfo.region
     };
 
-    console.log(`✅ MULTI-CURRENCY RECEIPT: ${serviceInfo.name} - ${amount.currency} ${amount.value} (${languageInfo.language}/${languageInfo.region}) (confidence: ${confidence})`);
+    console.log(`✅ SMART MULTI-CURRENCY RECEIPT: ${serviceInfo.name} - ${amount.currency} ${amount.value} (${languageInfo.language}/${languageInfo.region}) (confidence: ${confidence})`);
     return subscription;
+  }
+
+  /**
+   * SMART EXCLUSIONS - Context-aware filtering
+   */
+  private checkSmartExclusions(text: string): string | null {
+    for (const exclusionRule of SMART_EXCLUSIONS) {
+      // Check if any exclusion pattern matches
+      const matchedPattern = exclusionRule.patterns.find(pattern => text.includes(pattern));
+      
+      if (matchedPattern) {
+        // Check if any "allow if" condition is met
+        const hasAllowCondition = exclusionRule.allowIf.some(condition => text.includes(condition));
+        
+        if (!hasAllowCondition) {
+          return matchedPattern; // Exclude this email
+        } else {
+          console.log(`🔄 SMART EXCLUSION OVERRIDE: "${matchedPattern}" allowed due to context`);
+        }
+      }
+    }
+    
+    return null; // Don't exclude
   }
 
   /**
@@ -625,7 +693,7 @@ export class EmailProcessor {
    * Enhanced amount extraction with ALL currencies
    */
   private extractAmountWithAllCurrencies(text: string, originalBody: string, subject: string, languageInfo: any): { value: number; currency: string } | null {
-    console.log(`💰 MULTI-CURRENCY extraction (${languageInfo.language}/${languageInfo.region})...`);
+    console.log(`💰 SMART MULTI-CURRENCY extraction (${languageInfo.language}/${languageInfo.region})...`);
     
     // Try each currency pattern
     for (const currencyPattern of CURRENCY_PATTERNS) {
@@ -970,7 +1038,7 @@ export class EmailProcessor {
         if (existingDocs.empty) {
           // Add new subscription
           await addDoc(subscriptionsRef, subscription);
-          console.log(`✅ Added MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
+          console.log(`✅ Added SMART MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
         } else {
           // Update existing subscription
           const docRef = doc(db, 'subscriptions', existingDocs.docs[0].id);
@@ -978,7 +1046,7 @@ export class EmailProcessor {
             ...subscription,
             updatedAt: new Date().toISOString()
           });
-          console.log(`🔄 Updated MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
+          console.log(`🔄 Updated SMART MULTI-CURRENCY subscription: ${subscription.serviceName} (${subscription.currency} ${subscription.amount}) for user: ${this.userId}`);
         }
       } catch (error) {
         console.error(`❌ Error saving subscription ${subscription.serviceName} for user ${this.userId}:`, error);
