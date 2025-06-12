@@ -50,6 +50,7 @@ export function DynamicUpcomingPayments({ stats, loading }: DynamicUpcomingPayme
     if (name.includes('dropbox')) return 'bg-blue-500';
     if (name.includes('microsoft')) return 'bg-blue-600';
     if (name.includes('google')) return 'bg-yellow-500';
+    if (name.includes('stackblitz')) return 'bg-blue-400';
     return 'bg-purple-500';
   };
 

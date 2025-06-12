@@ -20,7 +20,7 @@ export interface DetectedSubscription {
 const SUBSCRIPTION_KEYWORDS = [
   'subscription', 'recurring payment', 'monthly plan', 'yearly plan', 
   'renewal', 'invoice', 'receipt', 'billing', 'payment confirmation',
-  'auto-renewal', 'membership', 'premium', 'pro plan'
+  'auto-renewal', 'membership', 'premium', 'pro plan', 'stackblitz'
 ];
 
 const SERVICE_PATTERNS = {
@@ -38,7 +38,10 @@ const SERVICE_PATTERNS = {
   'disney plus': { name: 'Disney+', category: 'Entertainment' },
   figma: { name: 'Figma', category: 'Design' },
   notion: { name: 'Notion', category: 'Productivity' },
-  canva: { name: 'Canva', category: 'Design' }
+  canva: { name: 'Canva', category: 'Design' },
+  stackblitz: { name: 'StackBlitz', category: 'Development' },
+  'stackblitz, inc': { name: 'StackBlitz', category: 'Development' },
+  'stackblitz inc': { name: 'StackBlitz', category: 'Development' }
 };
 
 export class EmailProcessor {
@@ -180,17 +183,28 @@ export class EmailProcessor {
   }
 
   private extractServiceName(subject: string, from: string, fullText: string): string {
-    // Check against known service patterns
+    // Check against known service patterns first
     for (const [pattern, service] of Object.entries(SERVICE_PATTERNS)) {
       if (fullText.includes(pattern) || from.toLowerCase().includes(pattern)) {
         return service.name;
       }
     }
 
+    // Special handling for StackBlitz variations
+    if (fullText.includes('stackblitz') || from.toLowerCase().includes('stackblitz')) {
+      return 'StackBlitz';
+    }
+
     // Extract from email address
     const emailMatch = from.match(/@([^.]+)/);
     if (emailMatch) {
       const domain = emailMatch[1];
+      
+      // Handle special cases
+      if (domain.toLowerCase().includes('stackblitz')) {
+        return 'StackBlitz';
+      }
+      
       return domain.charAt(0).toUpperCase() + domain.slice(1);
     }
 
@@ -256,12 +270,17 @@ export class EmailProcessor {
       }
     }
 
+    // Special handling for StackBlitz
+    if (lowerService.includes('stackblitz') || lowerText.includes('stackblitz')) {
+      return 'Development';
+    }
+
     // Category keywords
     const categoryKeywords = {
       'Entertainment': ['streaming', 'video', 'movie', 'tv', 'entertainment', 'media'],
       'Music': ['music', 'audio', 'podcast', 'sound'],
       'Productivity': ['productivity', 'office', 'workspace', 'collaboration', 'project'],
-      'Development': ['development', 'developer', 'code', 'programming', 'api'],
+      'Development': ['development', 'developer', 'code', 'programming', 'api', 'ide', 'editor', 'stackblitz'],
       'Design': ['design', 'creative', 'graphics', 'photo', 'editing'],
       'Storage': ['storage', 'cloud', 'backup', 'drive', 'sync'],
       'News': ['news', 'magazine', 'newspaper', 'journal'],

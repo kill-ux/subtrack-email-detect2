@@ -50,6 +50,7 @@ export function DynamicSubscriptionsList({ subscriptions, loading }: DynamicSubs
     if (name.includes('figma')) return '🎨';
     if (name.includes('notion')) return '📝';
     if (name.includes('canva')) return '🎨';
+    if (name.includes('stackblitz')) return '⚡';
     return '📱';
   };
 
