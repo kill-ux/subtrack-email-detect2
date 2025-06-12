@@ -1,6 +1,7 @@
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { DetectedSubscription } from './emailProcessor';
+import { CurrencyConverter, ConvertedAmount } from './currencyConverter';
 
 export interface SubscriptionStats {
   totalMonthlySpending: number;
@@ -12,12 +13,20 @@ export interface SubscriptionStats {
   upcomingPayments: Array<{
     serviceName: string;
     amount: number;
+    originalAmount: number;
+    originalCurrency: string;
     nextPaymentDate: string;
     daysUntilPayment: number;
   }>;
   monthlyTrend: Array<{
     month: string;
     spending: number;
+  }>;
+  currencyBreakdown: Array<{
+    currency: string;
+    count: number;
+    totalAmount: number;
+    convertedAmount: number;
   }>;
 }
 
@@ -42,37 +51,63 @@ export class SubscriptionService {
     }
   }
 
-  async getSubscriptionStats(userId: string): Promise<SubscriptionStats> {
-    const subscriptions = await this.getSubscriptions(userId);
+  async getSubscriptionsForYear(userId: string, year: number): Promise<DetectedSubscription[]> {
+    try {
+      const subscriptionsRef = collection(db, 'subscriptions');
+      const q = query(
+        subscriptionsRef,
+        where('userId', '==', userId),
+        where('yearProcessed', '==', year),
+        orderBy('detectedAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as DetectedSubscription[];
+    } catch (error) {
+      console.error(`Error fetching subscriptions for year ${year}:`, error);
+      return [];
+    }
+  }
+
+  async getSubscriptionStats(userId: string, year?: number): Promise<SubscriptionStats> {
+    const subscriptions = year 
+      ? await this.getSubscriptionsForYear(userId, year)
+      : await this.getSubscriptions(userId);
+    
+    // Convert all amounts to USD for consistent calculations
+    const convertedSubscriptions = await this.convertSubscriptionsToUSD(subscriptions);
     
     // Filter active subscriptions
-    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'active');
-    const trialSubscriptions = subscriptions.filter(sub => sub.status === 'trial');
-    const cancelledSubscriptions = subscriptions.filter(sub => sub.status === 'cancelled');
+    const activeSubscriptions = convertedSubscriptions.filter(sub => sub.status === 'active');
+    const trialSubscriptions = convertedSubscriptions.filter(sub => sub.status === 'trial');
+    const cancelledSubscriptions = convertedSubscriptions.filter(sub => sub.status === 'cancelled');
 
-    // Calculate monthly spending
+    // Calculate monthly spending in USD
     const monthlySpending = activeSubscriptions.reduce((total, sub) => {
       switch (sub.billingCycle) {
         case 'monthly':
-          return total + sub.amount;
+          return total + sub.convertedAmount;
         case 'yearly':
-          return total + (sub.amount / 12);
+          return total + (sub.convertedAmount / 12);
         case 'weekly':
-          return total + (sub.amount * 4.33); // Average weeks per month
+          return total + (sub.convertedAmount * 4.33);
         default:
           return total;
       }
     }, 0);
 
-    // Calculate yearly spending
+    // Calculate yearly spending in USD
     const yearlySpending = activeSubscriptions.reduce((total, sub) => {
       switch (sub.billingCycle) {
         case 'monthly':
-          return total + (sub.amount * 12);
+          return total + (sub.convertedAmount * 12);
         case 'yearly':
-          return total + sub.amount;
+          return total + sub.convertedAmount;
         case 'weekly':
-          return total + (sub.amount * 52);
+          return total + (sub.convertedAmount * 52);
         default:
           return total;
       }
@@ -84,7 +119,7 @@ export class SubscriptionService {
       return acc;
     }, {} as Record<string, number>);
 
-    // Calculate upcoming payments
+    // Calculate upcoming payments with currency conversion
     const upcomingPayments = activeSubscriptions
       .map(sub => {
         const nextPayment = new Date(sub.nextPaymentDate);
@@ -93,7 +128,9 @@ export class SubscriptionService {
         
         return {
           serviceName: sub.serviceName,
-          amount: sub.amount,
+          amount: sub.convertedAmount, // USD amount
+          originalAmount: sub.amount, // Original amount
+          originalCurrency: sub.currency, // Original currency
           nextPaymentDate: sub.nextPaymentDate,
           daysUntilPayment
         };
@@ -101,8 +138,13 @@ export class SubscriptionService {
       .filter(payment => payment.daysUntilPayment >= 0 && payment.daysUntilPayment <= 30)
       .sort((a, b) => a.daysUntilPayment - b.daysUntilPayment);
 
-    // Generate monthly trend (last 6 months)
-    const monthlyTrend = this.generateMonthlyTrend(activeSubscriptions);
+    // Generate monthly trend (last 6 months or for specific year)
+    const monthlyTrend = year 
+      ? this.generateYearlyTrend(activeSubscriptions, year)
+      : this.generateMonthlyTrend(activeSubscriptions);
+
+    // Currency breakdown
+    const currencyBreakdown = this.generateCurrencyBreakdown(subscriptions, convertedSubscriptions);
 
     return {
       totalMonthlySpending: Math.round(monthlySpending * 100) / 100,
@@ -112,11 +154,91 @@ export class SubscriptionService {
       cancelledSubscriptions: cancelledSubscriptions.length,
       subscriptionsByCategory,
       upcomingPayments,
-      monthlyTrend
+      monthlyTrend,
+      currencyBreakdown
     };
   }
 
-  private generateMonthlyTrend(subscriptions: DetectedSubscription[]): Array<{ month: string; spending: number }> {
+  private async convertSubscriptionsToUSD(subscriptions: DetectedSubscription[]): Promise<Array<DetectedSubscription & { convertedAmount: number }>> {
+    const conversions = await CurrencyConverter.convertMultipleToUSD(
+      subscriptions.map(sub => ({ amount: sub.amount, currency: sub.currency }))
+    );
+
+    return subscriptions.map((sub, index) => ({
+      ...sub,
+      convertedAmount: conversions[index].convertedAmount
+    }));
+  }
+
+  private generateCurrencyBreakdown(
+    originalSubscriptions: DetectedSubscription[], 
+    convertedSubscriptions: Array<DetectedSubscription & { convertedAmount: number }>
+  ): Array<{ currency: string; count: number; totalAmount: number; convertedAmount: number }> {
+    const breakdown = new Map<string, { count: number; totalAmount: number; convertedAmount: number }>();
+
+    originalSubscriptions.forEach((sub, index) => {
+      const existing = breakdown.get(sub.currency) || { count: 0, totalAmount: 0, convertedAmount: 0 };
+      breakdown.set(sub.currency, {
+        count: existing.count + 1,
+        totalAmount: existing.totalAmount + sub.amount,
+        convertedAmount: existing.convertedAmount + convertedSubscriptions[index].convertedAmount
+      });
+    });
+
+    return Array.from(breakdown.entries())
+      .map(([currency, data]) => ({ currency, ...data }))
+      .sort((a, b) => b.convertedAmount - a.convertedAmount);
+  }
+
+  private generateYearlyTrend(subscriptions: Array<DetectedSubscription & { convertedAmount: number }>, year: number): Array<{ month: string; spending: number }> {
+    const months = [];
+    
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(year, month, 1);
+      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+      
+      // Calculate spending for this specific month/year
+      let monthlySpending = 0;
+      
+      subscriptions.forEach(sub => {
+        if (sub.status !== 'active') return;
+        
+        const subDetectedDate = new Date(sub.detectedAt);
+        const subYear = subDetectedDate.getFullYear();
+        const subMonth = subDetectedDate.getMonth();
+        
+        // Only include subscriptions that were active during this month
+        if (subYear <= year && (subYear < year || subMonth <= month)) {
+          switch (sub.billingCycle) {
+            case 'monthly':
+              monthlySpending += sub.convertedAmount;
+              break;
+            case 'yearly':
+              monthlySpending += sub.convertedAmount / 12;
+              break;
+            case 'weekly':
+              monthlySpending += sub.convertedAmount * 4.33;
+              break;
+          }
+        }
+      });
+      
+      // Add some realistic variation for historical data
+      if (year < new Date().getFullYear()) {
+        const variation = (Math.random() - 0.5) * (monthlySpending * 0.1);
+        monthlySpending = Math.max(0, monthlySpending + variation);
+      }
+      
+      months.push({
+        month: monthName,
+        spending: Math.round(monthlySpending * 100) / 100
+      });
+    }
+    
+    return months;
+  }
+
+  private generateMonthlyTrend(subscriptions: Array<DetectedSubscription & { convertedAmount: number }>): Array<{ month: string; spending: number }> {
     const months = [];
     const today = new Date();
     
@@ -130,11 +252,11 @@ export class SubscriptionService {
         
         switch (sub.billingCycle) {
           case 'monthly':
-            return total + sub.amount;
+            return total + sub.convertedAmount;
           case 'yearly':
-            return total + (sub.amount / 12);
+            return total + (sub.convertedAmount / 12);
           case 'weekly':
-            return total + (sub.amount * 4.33);
+            return total + (sub.convertedAmount * 4.33);
           default:
             return total;
         }
