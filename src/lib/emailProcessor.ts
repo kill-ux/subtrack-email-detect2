@@ -253,11 +253,13 @@ export class EmailProcessor {
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
     const date = headers.find((h: any) => h.name === 'Date')?.value || '';
 
-    const body = this.extractEmailBody(email.payload);
+    // FIXED: Proper email body extraction with detailed debugging
+    const body = this.extractEmailBodyWithDebug(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
     console.log(`🧾 ULTRA-STRICT validation: "${subject}" from "${from}"`);
-    console.log(`📄 Email body preview: ${body.substring(0, 200)}...`);
+    console.log(`📄 Email body length: ${body.length} characters`);
+    console.log(`📄 Email body preview: ${body.substring(0, 300)}...`);
 
     // STEP 1: MUST contain "receipt" in subject or body
     const hasReceiptKeyword = RECEIPT_KEYWORDS.some(keyword => 
@@ -337,6 +339,120 @@ export class EmailProcessor {
 
     console.log(`✅ VALID RECEIPT DETECTED: ${serviceInfo.name} - $${amount} (confidence: ${confidence})`);
     return subscription;
+  }
+
+  /**
+   * FIXED: Comprehensive email body extraction with detailed debugging
+   */
+  private extractEmailBodyWithDebug(payload: any): string {
+    console.log(`📧 DEBUGGING email body extraction...`);
+    console.log(`📋 Payload structure:`, {
+      hasBody: !!payload.body,
+      hasBodyData: !!payload.body?.data,
+      hasParts: !!payload.parts,
+      partsCount: payload.parts?.length || 0,
+      mimeType: payload.mimeType,
+      hasSnippet: !!payload.snippet
+    });
+
+    let extractedBody = '';
+
+    // STRATEGY 1: Direct body data
+    if (payload.body?.data) {
+      try {
+        console.log(`🔍 Strategy 1: Direct body data (${payload.body.data.length} chars)`);
+        extractedBody = this.decodeBase64Url(payload.body.data);
+        console.log(`✅ Direct body extracted: ${extractedBody.length} chars`);
+        if (extractedBody.length > 0) {
+          return extractedBody;
+        }
+      } catch (e) {
+        console.warn(`⚠️ Failed to decode direct body:`, e);
+      }
+    }
+
+    // STRATEGY 2: Multipart message - look through all parts
+    if (payload.parts && payload.parts.length > 0) {
+      console.log(`🔍 Strategy 2: Multipart message with ${payload.parts.length} parts`);
+      
+      for (let i = 0; i < payload.parts.length; i++) {
+        const part = payload.parts[i];
+        console.log(`📄 Part ${i}:`, {
+          mimeType: part.mimeType,
+          hasBody: !!part.body,
+          hasBodyData: !!part.body?.data,
+          bodySize: part.body?.size || 0,
+          hasParts: !!part.parts
+        });
+
+        // Try to extract from this part
+        if (part.body?.data) {
+          try {
+            const partBody = this.decodeBase64Url(part.body.data);
+            console.log(`✅ Part ${i} body extracted: ${partBody.length} chars`);
+            
+            if (partBody.length > extractedBody.length) {
+              extractedBody = partBody;
+            }
+          } catch (e) {
+            console.warn(`⚠️ Failed to decode part ${i}:`, e);
+          }
+        }
+
+        // Recursively check nested parts
+        if (part.parts) {
+          console.log(`🔄 Part ${i} has nested parts, recursing...`);
+          const nestedBody = this.extractEmailBodyWithDebug(part);
+          if (nestedBody.length > extractedBody.length) {
+            extractedBody = nestedBody;
+          }
+        }
+      }
+    }
+
+    // STRATEGY 3: Fallback to snippet
+    if (extractedBody.length === 0 && payload.snippet) {
+      console.log(`🔍 Strategy 3: Using snippet (${payload.snippet.length} chars)`);
+      extractedBody = payload.snippet;
+    }
+
+    console.log(`📊 Final body extraction result: ${extractedBody.length} chars`);
+    if (extractedBody.length > 0) {
+      console.log(`📄 Body preview: ${extractedBody.substring(0, 200)}...`);
+    } else {
+      console.log(`❌ NO BODY CONTENT EXTRACTED!`);
+    }
+
+    return extractedBody;
+  }
+
+  /**
+   * FIXED: Proper Base64 URL decoding for Gmail API
+   */
+  private decodeBase64Url(data: string): string {
+    try {
+      // Gmail API uses Base64 URL encoding, need to convert to regular Base64
+      let base64 = data.replace(/-/g, '+').replace(/_/g, '/');
+      
+      // Add padding if needed
+      while (base64.length % 4) {
+        base64 += '=';
+      }
+      
+      // Decode from Base64
+      const decoded = atob(base64);
+      
+      // Convert to UTF-8 if needed
+      try {
+        return decodeURIComponent(escape(decoded));
+      } catch (e) {
+        // If UTF-8 conversion fails, return as-is
+        return decoded;
+      }
+    } catch (error) {
+      console.error('❌ Base64 decode error:', error);
+      return '';
+    }
   }
 
   private extractAmountWithDebug(text: string, originalBody: string, subject: string): number | null {
@@ -508,30 +624,6 @@ export class EmailProcessor {
       return 'cancelled';
     }
     return 'active';
-  }
-
-  private extractEmailBody(payload: any): string {
-    if (payload.body?.data) {
-      try {
-        return atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
-      } catch (e) {
-        return '';
-      }
-    }
-    
-    if (payload.parts) {
-      for (const part of payload.parts) {
-        if (part.mimeType === 'text/plain' && part.body?.data) {
-          try {
-            return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
-          } catch (e) {
-            continue;
-          }
-        }
-      }
-    }
-    
-    return payload.snippet || '';
   }
 
   private getDateOneYearAgo(): string {
