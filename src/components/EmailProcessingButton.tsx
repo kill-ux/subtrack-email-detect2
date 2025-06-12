@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Mail, Loader2, Database, Key } from "lucide-react";
+import { Mail, Loader2, Database, Key, CheckCircle, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { EmailProcessor } from "@/lib/emailProcessor";
 import { GmailTokenManager } from "@/lib/gmailTokenManager";
@@ -13,6 +13,7 @@ interface EmailProcessingButtonProps {
 export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingButtonProps) {
   const [processing, setProcessing] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>({});
+  const [currentStep, setCurrentStep] = useState('');
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -28,9 +29,12 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
 
     setProcessing(true);
     setDebugInfo({});
+    setCurrentStep('Initializing...');
     
     try {
       console.log(`🚀 Starting email processing for user: ${user.uid}`);
+      
+      setCurrentStep('Checking Gmail authorization...');
       
       // Initialize token manager
       const tokenManager = new GmailTokenManager(user.uid);
@@ -64,6 +68,8 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         return;
       }
 
+      setCurrentStep('Validating access token...');
+      
       // Check token validity
       const validToken = await tokenManager.getValidAccessToken();
       setDebugInfo(prev => ({
@@ -81,10 +87,14 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         return;
       }
 
+      setCurrentStep('Connecting to Gmail API...');
+      
       // Initialize email processor
       const processor = new EmailProcessor(user.uid);
 
       // Process emails
+      setCurrentStep('Scanning emails for subscriptions...');
+      
       toast({
         title: "Processing Started",
         description: "Scanning your emails for subscriptions...",
@@ -92,10 +102,15 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
 
       const detectedSubscriptions = await processor.processEmails();
       
+      setCurrentStep('Processing complete!');
+      
       setDebugInfo(prev => ({
         ...prev,
         subscriptionsFound: detectedSubscriptions.length,
-        processingComplete: true
+        processingComplete: true,
+        stackBlitzFound: detectedSubscriptions.filter(sub => 
+          sub.serviceName.toLowerCase().includes('stackblitz')
+        ).length
       }));
 
       toast({
@@ -106,6 +121,8 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
       onProcessingComplete();
     } catch (error) {
       console.error('❌ Error processing emails:', error);
+      
+      setCurrentStep('Error occurred');
       
       setDebugInfo(prev => ({
         ...prev,
@@ -133,6 +150,12 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
     }
   };
 
+  const getStepIcon = (step: string) => {
+    if (step.includes('Error')) return <AlertCircle className="h-3 w-3 text-red-500" />;
+    if (step.includes('complete')) return <CheckCircle className="h-3 w-3 text-green-500" />;
+    return <Loader2 className="h-3 w-3 animate-spin text-blue-500" />;
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <Button 
@@ -147,6 +170,14 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
         )}
         {processing ? "Processing Emails..." : "Scan Emails"}
       </Button>
+
+      {/* Current Step Indicator */}
+      {processing && currentStep && (
+        <div className="text-xs bg-blue-50 p-2 rounded flex items-center gap-2">
+          {getStepIcon(currentStep)}
+          <span className="font-medium">{currentStep}</span>
+        </div>
+      )}
 
       {/* Debug Information */}
       {Object.keys(debugInfo).length > 0 && (
@@ -176,6 +207,9 @@ export function EmailProcessingButton({ onProcessingComplete }: EmailProcessingB
             )}
             {debugInfo.subscriptionsFound !== undefined && (
               <div><strong>Found:</strong> {debugInfo.subscriptionsFound} subscriptions</div>
+            )}
+            {debugInfo.stackBlitzFound !== undefined && debugInfo.stackBlitzFound > 0 && (
+              <div className="text-green-600"><strong>StackBlitz:</strong> {debugInfo.stackBlitzFound} found! 🎉</div>
             )}
             {debugInfo.error && (
               <div className="text-red-600"><strong>Error:</strong> {debugInfo.error}</div>

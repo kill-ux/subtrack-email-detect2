@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithRedirect, GoogleAuthProvider, getRedirectResult } from 'firebase/auth';
 import { useToast } from '@/components/ui/use-toast';
+import { useEffect } from 'react';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -14,6 +15,22 @@ const SignIn = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Handle redirect result on component mount
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          navigate('/dashboard');
+        }
+      } catch (error) {
+        console.error('Redirect sign-in error:', error);
+      }
+    };
+
+    handleRedirectResult();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,15 +52,18 @@ const SignIn = () => {
 
   const handleGoogleSignIn = async () => {
     try {
+      setLoading(true);
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      navigate('/dashboard');
+      // Use redirect instead of popup to avoid CORS issues
+      await signInWithRedirect(auth, provider);
     } catch (error) {
+      console.error('Google sign-in error:', error);
       toast({
         title: "Error",
         description: "Failed to sign in with Google",
         variant: "destructive"
       });
+      setLoading(false);
     }
   };
 
@@ -122,9 +142,10 @@ const SignIn = () => {
             variant="outline"
             className="w-full"
             onClick={handleGoogleSignIn}
+            disabled={loading}
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-            Sign in with Google
+            {loading ? "Redirecting..." : "Sign in with Google"}
           </Button>
 
           <div className="mt-6 text-center">

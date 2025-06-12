@@ -25,5 +25,14 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     include: ['googleapis']
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+        }
+      }
+    }
   }
 }));

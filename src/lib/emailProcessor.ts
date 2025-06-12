@@ -76,6 +76,8 @@ export class EmailProcessor {
       const searchQuery = SUBSCRIPTION_KEYWORDS.map(keyword => `"${keyword}"`).join(' OR ');
       const oneYearAgo = this.getDateOneYearAgo();
       
+      console.log(`🔍 Searching Gmail with query: ${searchQuery}`);
+      
       const response = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery + ' after:' + oneYearAgo)}&maxResults=100`,
         {
@@ -156,12 +158,35 @@ export class EmailProcessor {
     const body = this.extractEmailBody(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
-    // Extract amount
-    const amountMatch = fullText.match(/\$(\d+(?:\.\d{2})?)/);
-    if (!amountMatch) return null;
+    // Extract amount - improved regex to catch more patterns
+    const amountPatterns = [
+      /\$(\d+(?:\.\d{2})?)/g,
+      /(\d+(?:\.\d{2})?)\s*USD/gi,
+      /(\d+(?:\.\d{2})?)\s*dollars?/gi,
+      /amount[:\s]*\$?(\d+(?:\.\d{2})?)/gi,
+      /total[:\s]*\$?(\d+(?:\.\d{2})?)/gi,
+      /price[:\s]*\$?(\d+(?:\.\d{2})?)/gi
+    ];
 
-    const amount = parseFloat(amountMatch[1]);
-    if (amount < 1) return null; // Filter out very small amounts
+    let amount = 0;
+    for (const pattern of amountPatterns) {
+      const matches = fullText.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          const numMatch = match.match(/(\d+(?:\.\d{2})?)/);
+          if (numMatch) {
+            const foundAmount = parseFloat(numMatch[1]);
+            if (foundAmount >= 1 && foundAmount <= 1000) { // Reasonable subscription range
+              amount = foundAmount;
+              break;
+            }
+          }
+        }
+        if (amount > 0) break;
+      }
+    }
+
+    if (amount === 0) return null;
 
     // Extract service name
     const serviceName = this.extractServiceName(subject, from, fullText);
