@@ -252,13 +252,11 @@ export class EmailProcessor {
 
     console.log(`🧾 ULTRA-STRICT validation: "${subject}" from "${from}"`);
 
-    // STEP 1: MUST contain "receipt" in subject or body
-    const hasReceiptKeyword = RECEIPT_KEYWORDS.some(keyword => 
-      subject.toLowerCase().includes(keyword) || fullText.includes(keyword)
-    );
+    // STEP 1: MUST contain "receipt" ANYWHERE in the email
+    const hasReceiptKeyword = fullText.includes('receipt');
     
     if (!hasReceiptKeyword) {
-      console.log(`❌ REJECTED: No "receipt" keyword found`);
+      console.log(`❌ REJECTED: No "receipt" keyword found anywhere in email`);
       return null;
     }
 
