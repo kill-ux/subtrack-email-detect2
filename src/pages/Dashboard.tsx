@@ -10,7 +10,7 @@ import { UpcomingPayments } from "@/components/UpcomingPayments";
 import { GmailAuthDialog } from "@/components/GmailAuthDialog";
 import { useAuth } from "@/lib/AuthContext";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firestore";
+import { db } from "@/lib/firebase";
 
 const Dashboard = () => {
   const [showDetails, setShowDetails] = useState(false);

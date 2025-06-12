@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firestore';
+import { db } from '@/lib/firebase';
 
 const AuthCallback = () => {
   const [error, setError] = useState<string | null>(null);
