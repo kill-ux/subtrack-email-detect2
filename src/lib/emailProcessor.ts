@@ -1,5 +1,6 @@
-import { addDoc, collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
+import { GmailTokenManager } from './gmailTokenManager';
 
 export interface DetectedSubscription {
   id?: string;
@@ -46,20 +47,32 @@ const SERVICE_PATTERNS = {
 
 export class EmailProcessor {
   private userId: string;
+  private tokenManager: GmailTokenManager;
 
   constructor(userId: string) {
     this.userId = userId;
+    this.tokenManager = new GmailTokenManager(userId);
   }
 
   async processEmails(): Promise<DetectedSubscription[]> {
     try {
-      // Get access token from Firebase users collection
-      const accessToken = await this.getAccessTokenFromFirebase();
-      if (!accessToken) {
-        throw new Error('No valid access token found');
+      console.log(`🔍 Starting email processing for user: ${this.userId}`);
+      
+      // Check if user has Gmail authorization
+      const isAuthorized = await this.tokenManager.isGmailAuthorized();
+      if (!isAuthorized) {
+        throw new Error('Gmail not authorized for this user');
       }
 
-      // Search for emails with subscription-related keywords using Gmail API directly
+      // Get valid access token (will refresh if needed)
+      const accessToken = await this.tokenManager.getValidAccessToken();
+      if (!accessToken) {
+        throw new Error('Unable to obtain valid access token');
+      }
+
+      console.log(`✅ Valid access token obtained for user: ${this.userId}`);
+
+      // Search for emails with subscription-related keywords
       const searchQuery = SUBSCRIPTION_KEYWORDS.map(keyword => `"${keyword}"`).join(' OR ');
       const oneYearAgo = this.getDateOneYearAgo();
       
@@ -75,26 +88,25 @@ export class EmailProcessor {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Gmail API Error:', response.status, errorText);
+        console.error('❌ Gmail API Error:', response.status, errorText);
         
-        // If token is expired, try to refresh it
+        // If token is expired, the tokenManager should have handled it
+        // But if we still get 401, the refresh token might be invalid
         if (response.status === 401) {
-          const newAccessToken = await this.refreshAccessToken();
-          if (newAccessToken) {
-            return this.processEmailsWithToken(newAccessToken);
-          }
+          throw new Error('Gmail access token invalid and refresh failed. Please reconnect your account.');
         }
         
-        throw new Error(`Failed to fetch emails from Gmail API: ${response.status} ${errorText}`);
+        throw new Error(`Gmail API error: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
       const messages = data.messages || [];
       const detectedSubscriptions: DetectedSubscription[] = [];
 
-      console.log(`Found ${messages.length} potential subscription emails`);
+      console.log(`📧 Found ${messages.length} potential subscription emails for user: ${this.userId}`);
 
-      for (const message of messages.slice(0, 50)) { // Limit to 50 emails to avoid rate limits
+      // Process emails (limit to 50 to avoid rate limits)
+      for (const message of messages.slice(0, 50)) {
         try {
           const emailResponse = await fetch(
             `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
@@ -106,151 +118,31 @@ export class EmailProcessor {
             }
           );
 
-          if (!emailResponse.ok) continue;
+          if (!emailResponse.ok) {
+            console.warn(`⚠️ Failed to fetch email ${message.id}: ${emailResponse.status}`);
+            continue;
+          }
 
           const email = await emailResponse.json();
           const subscription = this.extractSubscriptionInfo(email);
           if (subscription) {
             detectedSubscriptions.push(subscription);
+            console.log(`✅ Detected subscription: ${subscription.serviceName} - $${subscription.amount}`);
           }
         } catch (error) {
-          console.error('Error processing email:', error);
+          console.error(`❌ Error processing email ${message.id}:`, error);
         }
       }
 
-      console.log(`Detected ${detectedSubscriptions.length} subscriptions`);
+      console.log(`🎯 Detected ${detectedSubscriptions.length} subscriptions for user: ${this.userId}`);
 
       // Save to Firebase
       await this.saveSubscriptions(detectedSubscriptions);
       
       return detectedSubscriptions;
     } catch (error) {
-      console.error('Error processing emails:', error);
+      console.error(`❌ Error processing emails for user ${this.userId}:`, error);
       throw error;
-    }
-  }
-
-  private async processEmailsWithToken(accessToken: string): Promise<DetectedSubscription[]> {
-    const searchQuery = SUBSCRIPTION_KEYWORDS.map(keyword => `"${keyword}"`).join(' OR ');
-    const oneYearAgo = this.getDateOneYearAgo();
-    
-    const response = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery + ' after:' + oneYearAgo)}&maxResults=100`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch emails from Gmail API after token refresh');
-    }
-
-    const data = await response.json();
-    const messages = data.messages || [];
-    const detectedSubscriptions: DetectedSubscription[] = [];
-
-    for (const message of messages.slice(0, 50)) {
-      try {
-        const emailResponse = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-
-        if (!emailResponse.ok) continue;
-
-        const email = await emailResponse.json();
-        const subscription = this.extractSubscriptionInfo(email);
-        if (subscription) {
-          detectedSubscriptions.push(subscription);
-        }
-      } catch (error) {
-        console.error('Error processing email:', error);
-      }
-    }
-
-    await this.saveSubscriptions(detectedSubscriptions);
-    return detectedSubscriptions;
-  }
-
-  private async getAccessTokenFromFirebase(): Promise<string | null> {
-    try {
-      const userDocRef = doc(db, 'users', this.userId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        console.error('User document not found');
-        return null;
-      }
-
-      const userData = userDoc.data();
-      
-      if (!userData.gmailTokens?.access_token) {
-        console.error('No access token found in user document');
-        return null;
-      }
-
-      return userData.gmailTokens.access_token;
-    } catch (error) {
-      console.error('Error getting access token from Firebase:', error);
-      return null;
-    }
-  }
-
-  private async refreshAccessToken(): Promise<string | null> {
-    try {
-      const userDocRef = doc(db, 'users', this.userId);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        return null;
-      }
-
-      const userData = userDoc.data();
-      const refreshToken = userData.gmailTokens?.refresh_token;
-      
-      if (!refreshToken) {
-        console.error('No refresh token available');
-        return null;
-      }
-
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: '616003184852-2sjlhqid5sfme4lg3q3n1c6bc14sc7tv.apps.googleusercontent.com',
-          client_secret: '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',
-          refresh_token: refreshToken,
-          grant_type: 'refresh_token',
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('Failed to refresh token');
-        return null;
-      }
-
-      const tokens = await response.json();
-      
-      // Update tokens in Firebase
-      await updateDoc(userDocRef, {
-        'gmailTokens.access_token': tokens.access_token,
-        updatedAt: new Date().toISOString()
-      });
-
-      return tokens.access_token;
-    } catch (error) {
-      console.error('Error refreshing access token:', error);
-      return null;
     }
   }
 
@@ -475,7 +367,7 @@ export class EmailProcessor {
         if (existingDocs.empty) {
           // Add new subscription
           await addDoc(subscriptionsRef, subscription);
-          console.log(`Added new subscription: ${subscription.serviceName}`);
+          console.log(`✅ Added new subscription: ${subscription.serviceName} for user: ${this.userId}`);
         } else {
           // Update existing subscription
           const docRef = doc(db, 'subscriptions', existingDocs.docs[0].id);
@@ -483,10 +375,10 @@ export class EmailProcessor {
             ...subscription,
             updatedAt: new Date().toISOString()
           });
-          console.log(`Updated subscription: ${subscription.serviceName}`);
+          console.log(`🔄 Updated subscription: ${subscription.serviceName} for user: ${this.userId}`);
         }
       } catch (error) {
-        console.error('Error saving subscription:', error);
+        console.error(`❌ Error saving subscription ${subscription.serviceName} for user ${this.userId}:`, error);
       }
     }
   }
