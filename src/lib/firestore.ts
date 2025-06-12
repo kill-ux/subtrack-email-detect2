@@ -1,9 +1,6 @@
-import { initializeFirestore } from 'firebase/firestore';
-import { app } from './firebase';
-import { collection, addDoc, query, where, getDocs, doc, updateDoc, getFirestore } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { db } from './firebase';
 import type { Subscription, EmailData } from './types';
-
-export const db = getFirestore(app);
 
 export const subscriptionsCollection = collection(db, 'subscriptions');
 export const emailsCollection = collection(db, 'emails');
@@ -30,4 +27,20 @@ export async function updateSubscription(id: string, data: Partial<Subscription>
 export async function addEmail(email: Omit<EmailData, 'id'>) {
   const docRef = await addDoc(emailsCollection, email);
   return docRef.id;
+}
+
+export async function saveUserGmailAuth(userId: string, authData: any) {
+  const userDocRef = doc(db, 'users', userId);
+  await setDoc(userDocRef, {
+    gmailAuthorized: true,
+    gmailAuthCode: authData.code,
+    gmailTokens: authData.tokens,
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+}
+
+export async function getUserGmailAuth(userId: string) {
+  const userDocRef = doc(db, 'users', userId);
+  const userDoc = await getDocs(query(collection(db, 'users'), where('__name__', '==', userId)));
+  return userDoc.docs[0]?.data();
 }
