@@ -40,7 +40,10 @@ const REQUIRED_FINANCIAL_TERMS = [
   'billed to',
   'charged to your',
   'payment confirmation',
-  'billing statement'
+  'billing statement',
+  'amount paid',
+  'total',
+  'paid'
 ];
 
 // Known subscription services - only detect these
@@ -280,8 +283,8 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 4: MUST extract valid amount
-    const amount = this.extractStrictAmount(fullText);
+    // STEP 4: MUST extract valid amount - IMPROVED EXTRACTION
+    const amount = this.extractStrictAmount(fullText, body);
     if (!amount || amount < 1 || amount > 500) {
       console.log(`❌ REJECTED: Invalid amount: ${amount}`);
       return null;
@@ -295,7 +298,7 @@ export class EmailProcessor {
     }
 
     // STEP 6: MUST contain subscription indicators
-    const subscriptionTerms = ['subscription', 'recurring', 'monthly', 'annual', 'plan', 'membership'];
+    const subscriptionTerms = ['subscription', 'recurring', 'monthly', 'annual', 'plan', 'membership', 'pro'];
     const hasSubscriptionTerms = subscriptionTerms.some(term => fullText.includes(term));
     
     if (!hasSubscriptionTerms) {
@@ -332,24 +335,84 @@ export class EmailProcessor {
     return subscription;
   }
 
-  private extractStrictAmount(text: string): number | null {
-    // Look for amounts in strict receipt context
-    const strictAmountPatterns = [
-      /(?:total|amount|charged|billed|paid)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
-      /\$(\d+(?:\.\d{2})?)\s*(?:charged|billed|paid|total)/gi,
-      /(?:subscription|plan)[:\s]*\$(\d+(?:\.\d{2})?)/gi
+  private extractStrictAmount(text: string, originalBody: string): number | null {
+    console.log(`💰 Extracting amount from text...`);
+    
+    // IMPROVED: Multiple extraction strategies for different receipt formats
+    
+    // Strategy 1: StackBlitz-style clean amounts (like your example)
+    // Look for standalone dollar amounts on their own lines
+    const cleanAmountPatterns = [
+      /^\$(\d+(?:\.\d{2})?)\s*$/gm,  // $20.00 on its own line
+      /\n\s*\$(\d+(?:\.\d{2})?)\s*\n/g,  // $20.00 between newlines
+      /\s\$(\d+(?:\.\d{2})?)\s/g,  // $20.00 with spaces around
     ];
 
-    for (const pattern of strictAmountPatterns) {
+    for (const pattern of cleanAmountPatterns) {
       const matches = [...text.matchAll(pattern)];
       for (const match of matches) {
         const amount = parseFloat(match[1]);
         if (amount >= 1 && amount <= 500) {
+          console.log(`✅ Found clean amount: $${amount} using pattern: ${pattern.source}`);
           return amount;
         }
       }
     }
 
+    // Strategy 2: Context-aware amounts (traditional receipt patterns)
+    const contextAmountPatterns = [
+      /(?:total|amount|charged|billed|paid)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /\$(\d+(?:\.\d{2})?)\s*(?:charged|billed|paid|total)/gi,
+      /(?:subscription|plan)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /(?:amount paid)[:\s]*\$(\d+(?:\.\d{2})?)/gi,
+      /(?:price|cost)[:\s]*\$(\d+(?:\.\d{2})?)/gi
+    ];
+
+    for (const pattern of contextAmountPatterns) {
+      const matches = [...text.matchAll(pattern)];
+      for (const match of matches) {
+        const amount = parseFloat(match[1]);
+        if (amount >= 1 && amount <= 500) {
+          console.log(`✅ Found contextual amount: $${amount} using pattern: ${pattern.source}`);
+          return amount;
+        }
+      }
+    }
+
+    // Strategy 3: Table-style amounts (for structured receipts)
+    const tableAmountPatterns = [
+      /qty\s+1[^\$]*\$(\d+(?:\.\d{2})?)/gi,  // Qty 1 ... $20.00
+      /\$(\d+(?:\.\d{2})?)\s*(?:\n|\r\n|\r)\s*(?:total|amount)/gi,  // $20.00 followed by total
+    ];
+
+    for (const pattern of tableAmountPatterns) {
+      const matches = [...text.matchAll(pattern)];
+      for (const match of matches) {
+        const amount = parseFloat(match[1]);
+        if (amount >= 1 && amount <= 500) {
+          console.log(`✅ Found table amount: $${amount} using pattern: ${pattern.source}`);
+          return amount;
+        }
+      }
+    }
+
+    // Strategy 4: All dollar amounts as fallback
+    const allAmountPattern = /\$(\d+(?:\.\d{2})?)/g;
+    const allMatches = [...text.matchAll(allAmountPattern)];
+    
+    // Filter valid amounts and pick the most likely one
+    const validAmounts = allMatches
+      .map(match => parseFloat(match[1]))
+      .filter(amount => amount >= 1 && amount <= 500)
+      .sort((a, b) => b - a); // Sort descending to prefer larger amounts
+
+    if (validAmounts.length > 0) {
+      const amount = validAmounts[0];
+      console.log(`✅ Found fallback amount: $${amount} from ${validAmounts.length} candidates`);
+      return amount;
+    }
+
+    console.log(`❌ No valid amount found in text`);
     return null;
   }
 
