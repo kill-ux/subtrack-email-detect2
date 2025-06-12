@@ -1,6 +1,30 @@
 import { collection, addDoc, query, where, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Subscription, EmailData } from './types';
+
+export interface Subscription {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  billingCycle: 'monthly' | 'yearly' | 'weekly';
+  nextPaymentDate: string;
+  category: string;
+  status: 'active' | 'cancelled' | 'trial';
+  provider: string;
+  lastDetectedEmail?: {
+    id: string;
+    date: string;
+    subject: string;
+  };
+}
+
+export interface EmailData {
+  id: string;
+  subject: string;
+  from: string;
+  date: string;
+  body: string;
+}
 
 export const subscriptionsCollection = collection(db, 'subscriptions');
 export const emailsCollection = collection(db, 'emails');
