@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { auth } from '@/lib/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { useToast } from '@/components/ui/use-toast';
 
 const Login = () => {
@@ -14,6 +14,7 @@ const Login = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -32,14 +33,50 @@ const Login = () => {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Account creation error:', error);
+      let errorMessage = "Failed to create account";
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = "An account with this email already exists";
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = "Password should be at least 6 characters";
+      }
       toast({
         title: "Error",
-        description: "Failed to create account",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      
+      const result = await signInWithPopup(auth, provider);
+      console.log('✅ Google sign-up successful');
+      navigate('/dashboard');
+    } catch (error: any) {
+      console.error('❌ Google sign-up error:', error);
+      setGoogleLoading(false);
+      
+      let errorMessage = "Failed to sign up with Google";
+      if (error.code === 'auth/popup-blocked') {
+        errorMessage = "Popup was blocked. Please allow popups and try again.";
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "Sign-up was cancelled. Please try again.";
+      }
+      
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
     }
   };
 
@@ -71,7 +108,7 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1"
-                disabled={loading}
+                disabled={loading || googleLoading}
               />
             </div>
 
@@ -86,7 +123,7 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="mt-1 pr-10"
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                 />
                 <button
                   type="button"
@@ -108,18 +145,47 @@ const Login = () => {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 className="mt-1"
-                disabled={loading}
+                disabled={loading || googleLoading}
               />
             </div>
 
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              disabled={loading}
+              disabled={loading || googleLoading}
             >
               {loading ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignUp}
+            disabled={loading || googleLoading}
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
+            {googleLoading ? "Connecting..." : "Sign up with Google"}
+          </Button>
+
+          {googleLoading && (
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center gap-2 text-sm text-blue-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span>Connecting to Google...</span>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">

@@ -1,36 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword, signInWithRedirect, GoogleAuthProvider, getRedirectResult } from 'firebase/auth';
+import { 
+  signInWithEmailAndPassword, 
+  signInWithPopup, 
+  signInWithRedirect,
+  GoogleAuthProvider, 
+  getRedirectResult,
+  onAuthStateChanged
+} from 'firebase/auth';
 import { useToast } from '@/components/ui/use-toast';
-import { useEffect } from 'react';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Handle redirect result on component mount
+  // Handle redirect result and auth state changes
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
+          console.log('✅ Google redirect sign-in successful');
           navigate('/dashboard');
         }
       } catch (error) {
-        console.error('Redirect sign-in error:', error);
+        console.error('❌ Redirect sign-in error:', error);
+        setGoogleLoading(false);
+        toast({
+          title: "Authentication Error",
+          description: "Failed to complete Google sign-in. Please try again.",
+          variant: "destructive"
+        });
       }
     };
 
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log('✅ User authenticated:', user.email);
+        navigate('/dashboard');
+      }
+    });
+
     handleRedirectResult();
-  }, [navigate]);
+
+    return () => unsubscribe();
+  }, [navigate, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +64,7 @@ const SignIn = () => {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/dashboard');
     } catch (error) {
+      console.error('❌ Email sign-in error:', error);
       toast({
         title: "Error",
         description: "Invalid email or password",
@@ -51,19 +76,49 @@ const SignIn = () => {
   };
 
   const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    
     try {
-      setLoading(true);
       const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup to avoid CORS issues
-      await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error('Google sign-in error:', error);
+      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      
+      // Try popup first, fallback to redirect if it fails
+      try {
+        console.log('🔄 Attempting Google popup sign-in...');
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ Google popup sign-in successful');
+        navigate('/dashboard');
+      } catch (popupError: any) {
+        console.log('⚠️ Popup blocked or failed, trying redirect...', popupError.code);
+        
+        // If popup is blocked or fails, use redirect
+        if (popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.code === 'auth/cancelled-popup-request') {
+          
+          console.log('🔄 Using redirect method...');
+          await signInWithRedirect(auth, provider);
+          // Don't set loading to false here as redirect will reload the page
+        } else {
+          throw popupError;
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Google sign-in error:', error);
+      setGoogleLoading(false);
+      
+      let errorMessage = "Failed to sign in with Google";
+      if (error.code === 'auth/popup-blocked') {
+        errorMessage = "Popup was blocked. Please allow popups and try again.";
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "Sign-in was cancelled. Please try again.";
+      }
+      
       toast({
-        title: "Error",
-        description: "Failed to sign in with Google",
+        title: "Authentication Error",
+        description: errorMessage,
         variant: "destructive"
       });
-      setLoading(false);
     }
   };
 
@@ -95,7 +150,7 @@ const SignIn = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1"
-                disabled={loading}
+                disabled={loading || googleLoading}
               />
             </div>
 
@@ -109,7 +164,7 @@ const SignIn = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="mt-1"
-                disabled={loading}
+                disabled={loading || googleLoading}
               />
             </div>
 
@@ -122,7 +177,7 @@ const SignIn = () => {
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              disabled={loading}
+              disabled={loading || googleLoading}
             >
               {loading ? "Signing in..." : "Sign In"}
             </Button>
@@ -142,11 +197,20 @@ const SignIn = () => {
             variant="outline"
             className="w-full"
             onClick={handleGoogleSignIn}
-            disabled={loading}
+            disabled={loading || googleLoading}
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-            {loading ? "Redirecting..." : "Sign in with Google"}
+            {googleLoading ? "Connecting..." : "Sign in with Google"}
           </Button>
+
+          {googleLoading && (
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center gap-2 text-sm text-blue-600">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span>Connecting to Google...</span>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">

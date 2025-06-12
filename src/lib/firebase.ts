@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAxTkK4mt_IpPoHlgflnzGkX6kiCpqpy_U",
@@ -15,3 +15,14 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Configure auth settings for better popup handling
+auth.settings = {
+  appVerificationDisabledForTesting: false
+};
+
+// Set custom domain for auth if needed
+if (typeof window !== 'undefined') {
+  // Ensure proper domain configuration
+  console.log('🔧 Firebase initialized with domain:', window.location.hostname);
+}
