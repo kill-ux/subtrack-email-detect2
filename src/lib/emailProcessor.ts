@@ -23,58 +23,79 @@ export interface DetectedSubscription {
   yearProcessed?: number;
 }
 
-// 🎯 SIMPLIFIED: Core payment receipt keywords (more flexible)
-const RECEIPT_KEYWORDS = [
-  // Core receipt terms
-  'receipt', 'payment', 'invoice', 'billing', 'charge', 'transaction',
-  'confirmation', 'successful', 'processed', 'complete', 'renewed',
+// 🎯 STRICT: Only actual payment/receipt keywords
+const PAYMENT_RECEIPT_KEYWORDS = [
+  // Direct payment confirmations
+  'payment receipt', 'receipt for payment', 'payment confirmation', 'payment successful',
+  'payment processed', 'payment complete', 'charge confirmation', 'billing receipt',
+  'subscription receipt', 'invoice receipt', 'transaction receipt',
   
-  // StackBlitz specific
-  'your receipt from', 'receipt from stackblitz', 'stackblitz inc',
+  // Specific receipt phrases
+  'your receipt from', 'receipt from', 'thank you for your payment',
+  'payment has been processed', 'subscription renewed', 'auto-renewal successful',
   
-  // Payment processors
-  'stripe', 'paypal', 'payment processor'
+  // StackBlitz specific (known to be valid)
+  'receipt from stackblitz', 'stackblitz receipt'
 ];
 
-// 💰 SIMPLIFIED: Basic financial indicators
-const FINANCIAL_INDICATORS = [
-  '$', '€', '£', 'USD', 'EUR', 'GBP', 'MAD', 'DH',
-  'amount', 'total', 'charged', 'billed', 'paid', 'fee', 'cost', 'price'
-];
-
-// 🚫 ONLY block obvious refunds and spam
-const HARD_EXCLUSIONS = [
+// 🚫 STRICT EXCLUSIONS: Block non-payment emails
+const STRICT_EXCLUSIONS = [
+  // Refunds and cancellations
   'refund', 'refunded', 'money back', 'chargeback', 'reversal',
-  'cancelled subscription', 'subscription cancelled', 'account closed',
-  'spam', 'phishing', 'fraud', 'suspicious'
+  'cancelled', 'canceled', 'subscription cancelled', 'account closed',
+  
+  // Non-payment notifications
+  'welcome', 'getting started', 'account created', 'sign up', 'signup',
+  'verification', 'verify', 'confirm your email', 'activate account',
+  'password reset', 'security alert', 'login attempt', 'new device',
+  
+  // Marketing and promotions
+  'newsletter', 'promotional', 'marketing', 'special offer', 'discount',
+  'free trial', 'trial started', 'trial ending', 'upgrade now',
+  
+  // GitHub specific non-payment emails
+  'security advisory', 'dependabot', 'pull request', 'issue', 'commit',
+  'repository', 'workflow', 'action', 'release', 'merge', 'branch',
+  'code review', 'discussion', 'notification', 'mention', 'comment',
+  'starred', 'watching', 'following', 'team invitation', 'organization',
+  
+  // General notifications
+  'reminder', 'expiring', 'expires', 'due soon', 'upcoming',
+  'summary', 'digest', 'weekly report', 'monthly report'
 ];
 
-// 🏢 VERIFIED SERVICES (simplified)
+// 💰 REQUIRED: Must have actual payment amount
+const AMOUNT_REQUIRED_PHRASES = [
+  'amount charged', 'total charged', 'payment of', 'charged to',
+  'billed', 'invoice total', 'amount paid', 'total paid',
+  '$', '€', '£', 'USD', 'EUR', 'GBP', 'MAD', 'DH'
+];
+
+// 🏢 VERIFIED SERVICES with strict patterns
 const KNOWN_SERVICES = {
   stackblitz: {
     name: 'StackBlitz Pro',
     category: 'Development',
-    patterns: ['stackblitz', 'bolt pro', 'stackblitz inc']
+    patterns: ['stackblitz inc', 'stackblitz pro', 'bolt pro'],
+    paymentPatterns: ['receipt from stackblitz', 'stackblitz receipt']
   },
   kick: {
     name: 'Kick.com',
     category: 'Streaming',
-    patterns: ['kick.com', 'kick subscription']
+    patterns: ['kick.com'],
+    paymentPatterns: ['kick subscription', 'kick payment']
   },
   spotify: {
     name: 'Spotify',
     category: 'Music',
-    patterns: ['spotify', 'spotify premium']
+    patterns: ['spotify'],
+    paymentPatterns: ['spotify premium', 'spotify subscription']
   },
   netflix: {
     name: 'Netflix',
     category: 'Entertainment',
-    patterns: ['netflix']
-  },
-  github: {
-    name: 'GitHub',
-    category: 'Development',
-    patterns: ['github', 'github pro']
+    patterns: ['netflix'],
+    paymentPatterns: ['netflix subscription', 'netflix payment']
   }
 };
 
@@ -98,7 +119,7 @@ export class EmailProcessor {
 
   async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🗓️ Starting SIMPLIFIED processing for ${year} (user: ${this.userId})`);
+      console.log(`🗓️ Starting STRICT payment detection for ${year} (user: ${this.userId})`);
       
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
       if (!isAuthorized) {
@@ -110,38 +131,34 @@ export class EmailProcessor {
         throw new Error('Unable to obtain valid access token');
       }
 
-      // 🎯 SIMPLIFIED: Broader search queries
+      // 🎯 STRICT: Only search for actual payment receipts
       const searchQueries = [
-        // Basic receipt searches
-        `receipt after:${year}/01/01 before:${year + 1}/01/01`,
-        `payment after:${year}/01/01 before:${year + 1}/01/01`,
-        `invoice after:${year}/01/01 before:${year + 1}/01/01`,
-        `billing after:${year}/01/01 before:${year + 1}/01/01`,
+        // Explicit payment receipts
+        `"payment receipt" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"receipt for payment" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"payment confirmation" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"payment successful" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"billing receipt" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"subscription receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // StackBlitz specific
-        `stackblitz after:${year}/01/01 before:${year + 1}/01/01`,
-        `"stackblitz inc" after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:stripe.com stackblitz after:${year}/01/01 before:${year + 1}/01/01`,
+        // StackBlitz specific (known valid)
+        `"receipt from stackblitz" after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:stripe.com "stackblitz" "receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Other services
-        `kick.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `spotify after:${year}/01/01 before:${year + 1}/01/01`,
-        `netflix after:${year}/01/01 before:${year + 1}/01/01`,
-        `github after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // Payment processors
-        `from:stripe.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:paypal.com after:${year}/01/01 before:${year + 1}/01/01`
+        // Other verified services with payment context
+        `from:stripe.com "receipt" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"subscription renewed" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"auto-renewal successful" after:${year}/01/01 before:${year + 1}/01/01`
       ];
 
       const detectedSubscriptions: DetectedSubscription[] = [];
       const processedEmailIds = new Set<string>();
       
       for (const searchQuery of searchQueries) {
-        console.log(`🔍 SIMPLIFIED search (${year}): ${searchQuery.split(' ')[0]}...`);
+        console.log(`🔍 STRICT search (${year}): ${searchQuery.split(' ')[0]}...`);
         
         const response = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=50`,
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=20`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -183,7 +200,7 @@ export class EmailProcessor {
             }
 
             const email = await emailResponse.json();
-            const subscription = this.validateEmailSimplified(email, year);
+            const subscription = this.validatePaymentEmailStrict(email, year);
             
             if (subscription) {
               const isDuplicate = detectedSubscriptions.some(existing => 
@@ -194,7 +211,7 @@ export class EmailProcessor {
               
               if (!isDuplicate) {
                 detectedSubscriptions.push(subscription);
-                console.log(`✅ VALID PAYMENT (${year}): ${subscription.serviceName} - ${subscription.currency} ${subscription.amount}`);
+                console.log(`✅ VERIFIED PAYMENT (${year}): ${subscription.serviceName} - ${subscription.currency} ${subscription.amount}`);
               }
             }
           } catch (error) {
@@ -203,7 +220,7 @@ export class EmailProcessor {
         }
       }
 
-      console.log(`🎯 SIMPLIFIED detection (${year}) found ${detectedSubscriptions.length} payments for user: ${this.userId}`);
+      console.log(`🎯 STRICT detection (${year}) found ${detectedSubscriptions.length} verified payments for user: ${this.userId}`);
 
       await this.saveSubscriptionsForYear(detectedSubscriptions, year);
       return detectedSubscriptions;
@@ -214,9 +231,9 @@ export class EmailProcessor {
   }
 
   /**
-   * 🛡️ SIMPLIFIED VALIDATION - Much more flexible
+   * 🛡️ STRICT PAYMENT VALIDATION - Only actual payment receipts
    */
-  private validateEmailSimplified(email: any, year: number): DetectedSubscription | null {
+  private validatePaymentEmailStrict(email: any, year: number): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
@@ -230,65 +247,63 @@ export class EmailProcessor {
     }
 
     const body = this.extractEmailBody(email.payload);
-    const fullText = `${subject} ${body} ${from}`.toLowerCase();
+    const fullText = `${subject} ${body}`.toLowerCase();
 
-    console.log(`\n🛡️ SIMPLIFIED validation (${year}):`);
+    console.log(`\n🛡️ STRICT validation (${year}):`);
     console.log(`📋 SUBJECT: "${subject}"`);
     console.log(`👤 FROM: "${from}"`);
-    console.log(`📄 BODY PREVIEW: ${body.substring(0, 200)}...`);
 
-    // STEP 1: Block obvious refunds and spam
-    for (const exclusion of HARD_EXCLUSIONS) {
-      if (fullText.includes(exclusion)) {
-        console.log(`❌ REJECTED: Contains "${exclusion}"`);
+    // STEP 1: STRICT EXCLUSIONS - Block non-payment emails
+    for (const exclusion of STRICT_EXCLUSIONS) {
+      if (fullText.includes(exclusion.toLowerCase()) || subject.toLowerCase().includes(exclusion.toLowerCase())) {
+        console.log(`❌ REJECTED: Contains exclusion "${exclusion}"`);
         return null;
       }
     }
 
-    // STEP 2: Must have SOME payment indicator (very flexible)
-    const hasPaymentIndicator = RECEIPT_KEYWORDS.some(keyword => 
-      subject.toLowerCase().includes(keyword) || 
-      fullText.includes(keyword) ||
-      from.toLowerCase().includes(keyword)
+    // STEP 2: Must have EXPLICIT payment receipt keywords
+    const hasPaymentKeyword = PAYMENT_RECEIPT_KEYWORDS.some(keyword => 
+      subject.toLowerCase().includes(keyword.toLowerCase()) || 
+      fullText.includes(keyword.toLowerCase())
     );
     
-    if (!hasPaymentIndicator) {
-      console.log(`❌ REJECTED: No payment indicator found`);
+    if (!hasPaymentKeyword) {
+      console.log(`❌ REJECTED: No explicit payment receipt keyword found`);
+      console.log(`📝 Looking for: ${PAYMENT_RECEIPT_KEYWORDS.slice(0, 3).join(', ')}...`);
       return null;
     }
 
-    // STEP 3: Must have SOME financial context
-    const hasFinancialContext = FINANCIAL_INDICATORS.some(indicator => 
-      fullText.includes(indicator) || subject.toLowerCase().includes(indicator)
+    // STEP 3: Must have ACTUAL amount with payment context
+    const hasAmountWithContext = AMOUNT_REQUIRED_PHRASES.some(phrase => 
+      fullText.includes(phrase.toLowerCase()) || subject.toLowerCase().includes(phrase.toLowerCase())
     );
     
-    if (!hasFinancialContext) {
-      console.log(`❌ REJECTED: No financial context found`);
+    if (!hasAmountWithContext) {
+      console.log(`❌ REJECTED: No amount with payment context found`);
       return null;
     }
 
-    // STEP 4: Try to extract amount
-    const amount = this.extractAmount(fullText, subject);
+    // STEP 4: Extract and validate amount
+    const amount = this.extractAmountStrict(fullText, subject);
     if (!amount) {
-      console.log(`❌ REJECTED: No valid amount found`);
+      console.log(`❌ REJECTED: No valid payment amount found`);
       return null;
     }
 
-    // STEP 5: Try to identify service
-    const serviceInfo = this.identifyService(subject, from, fullText);
+    // STEP 5: Must be a verified service with payment patterns
+    const serviceInfo = this.identifyVerifiedService(subject, from, fullText);
     if (!serviceInfo) {
-      console.log(`❌ REJECTED: Unknown service`);
+      console.log(`❌ REJECTED: Not a verified payment service`);
       return null;
     }
 
-    // 📧 LOG VALID PAYMENT EMAIL
-    console.log(`\n💳 ===== VALID PAYMENT EMAIL =====`);
+    // 📧 LOG VERIFIED PAYMENT EMAIL
+    console.log(`\n💳 ===== VERIFIED PAYMENT EMAIL =====`);
     console.log(`📋 SUBJECT: ${subject}`);
     console.log(`👤 FROM: ${from}`);
-    console.log(`📄 BODY: ${body}`);
     console.log(`💰 AMOUNT: ${amount.currency} ${amount.value}`);
     console.log(`🏢 SERVICE: ${serviceInfo.name} (${serviceInfo.category})`);
-    console.log(`💳 ================================\n`);
+    console.log(`💳 ===================================\n`);
 
     const subscription: DetectedSubscription = {
       userId: this.userId,
@@ -303,34 +318,34 @@ export class EmailProcessor {
       detectedAt: new Date().toISOString(),
       lastEmailDate: new Date(date).toISOString(),
       emailSubject: subject,
-      confidence: 0.85,
+      confidence: 0.95, // High confidence for strict validation
       receiptType: 'payment_receipt',
       yearProcessed: year
     };
 
-    console.log(`✅ VALID PAYMENT: ${serviceInfo.name} - ${amount.currency} ${amount.value}`);
+    console.log(`✅ VERIFIED PAYMENT: ${serviceInfo.name} - ${amount.currency} ${amount.value}`);
     return subscription;
   }
 
   /**
-   * Simple amount extraction
+   * Strict amount extraction - must be in payment context
    */
-  private extractAmount(text: string, subject: string): { value: number; currency: string } | null {
+  private extractAmountStrict(text: string, subject: string): { value: number; currency: string } | null {
     for (const currencyPattern of CURRENCY_PATTERNS) {
-      // Try text first
+      // Check text
       const textMatches = [...text.matchAll(currencyPattern.pattern)];
       for (const match of textMatches) {
         const amount = this.parseAmount(match[1]);
-        if (amount >= 1 && amount <= 1000) {
+        if (amount >= 1 && amount <= 500) { // Reasonable subscription range
           return { value: amount, currency: currencyPattern.currency };
         }
       }
       
-      // Try subject
+      // Check subject
       const subjectMatches = [...subject.matchAll(currencyPattern.pattern)];
       for (const match of subjectMatches) {
         const amount = this.parseAmount(match[1]);
-        if (amount >= 1 && amount <= 1000) {
+        if (amount >= 1 && amount <= 500) {
           return { value: amount, currency: currencyPattern.currency };
         }
       }
@@ -340,25 +355,39 @@ export class EmailProcessor {
   }
 
   /**
-   * Simple service identification
+   * Only identify verified services with payment patterns
    */
-  private identifyService(subject: string, from: string, fullText: string): { name: string; category: string } | null {
-    // Check known services
+  private identifyVerifiedService(subject: string, from: string, fullText: string): { name: string; category: string } | null {
+    // Check known services with payment patterns
     for (const [key, service] of Object.entries(KNOWN_SERVICES)) {
-      const hasMatch = service.patterns.some(pattern => 
+      // Must match service pattern
+      const hasServicePattern = service.patterns.some(pattern => 
         subject.toLowerCase().includes(pattern) || 
         fullText.includes(pattern) ||
         from.toLowerCase().includes(pattern)
       );
       
-      if (hasMatch) {
-        return { name: service.name, category: service.category };
+      // Must also match payment pattern (for extra verification)
+      const hasPaymentPattern = service.paymentPatterns.some(pattern => 
+        subject.toLowerCase().includes(pattern) || 
+        fullText.includes(pattern)
+      );
+      
+      if (hasServicePattern && (hasPaymentPattern || key === 'stackblitz')) {
+        // Special case for StackBlitz - Stripe emails are valid
+        if (key === 'stackblitz' && from.includes('stripe.com')) {
+          return { name: service.name, category: service.category };
+        }
+        
+        if (hasPaymentPattern) {
+          return { name: service.name, category: service.category };
+        }
       }
     }
     
-    // Extract from payment processor emails
-    if (from.includes('stripe.com') || from.includes('paypal.com')) {
-      const extracted = this.extractServiceFromProcessor(subject, fullText);
+    // Special handling for Stripe payment processor
+    if (from.includes('stripe.com')) {
+      const extracted = this.extractServiceFromStripe(subject, fullText);
       if (extracted) {
         return extracted;
       }
@@ -368,27 +397,24 @@ export class EmailProcessor {
   }
 
   /**
-   * Extract service from payment processor
+   * Extract service from Stripe emails (payment processor)
    */
-  private extractServiceFromProcessor(subject: string, fullText: string): { name: string; category: string } | null {
-    const patterns = [
-      /(?:receipt|payment|invoice).*?(?:from|for)\s+([A-Z][a-zA-Z\s]+?)(?:\s|$|#|,)/i,
-      /([A-Z][a-zA-Z\s]+?)\s+Inc\.?/i,
-      /(StackBlitz)/i
-    ];
+  private extractServiceFromStripe(subject: string, fullText: string): { name: string; category: string } | null {
+    // Look for "receipt from [Service]" pattern
+    const receiptPattern = /receipt\s+from\s+([A-Z][a-zA-Z\s]+?)(?:\s|$|#|,|\.)/i;
+    const match = subject.match(receiptPattern);
     
-    for (const pattern of patterns) {
-      const match = subject.match(pattern) || fullText.match(pattern);
-      if (match && match[1]) {
-        let serviceName = match[1].trim();
-        
-        if (serviceName.toLowerCase().includes('stackblitz')) {
-          return { name: 'StackBlitz Pro', category: 'Development' };
-        }
-        
-        if (serviceName.length > 2 && serviceName.length < 50) {
-          return { name: serviceName, category: 'Digital Service' };
-        }
+    if (match && match[1]) {
+      let serviceName = match[1].trim();
+      
+      // Known service mappings
+      if (serviceName.toLowerCase().includes('stackblitz')) {
+        return { name: 'StackBlitz Pro', category: 'Development' };
+      }
+      
+      // Only accept if it's a reasonable service name
+      if (serviceName.length > 2 && serviceName.length < 30) {
+        return { name: serviceName, category: 'Digital Service' };
       }
     }
     
@@ -504,7 +530,7 @@ export class EmailProcessor {
             ...subscription,
             yearProcessed: year
           });
-          console.log(`✅ Added payment (${year}): ${subscription.serviceName}`);
+          console.log(`✅ Added verified payment (${year}): ${subscription.serviceName}`);
         } else {
           const docRef = doc(db, 'subscriptions', existingDocs.docs[0].id);
           await updateDoc(docRef, {
@@ -512,7 +538,7 @@ export class EmailProcessor {
             yearProcessed: year,
             updatedAt: new Date().toISOString()
           });
-          console.log(`🔄 Updated payment (${year}): ${subscription.serviceName}`);
+          console.log(`🔄 Updated verified payment (${year}): ${subscription.serviceName}`);
         }
       } catch (error) {
         console.error(`❌ Error saving subscription ${subscription.serviceName}:`, error);
