@@ -19,6 +19,7 @@ const Analytics = () => {
   const [subscriptions, setSubscriptions] = useState<DetectedSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [monthlyTrendData, setMonthlyTrendData] = useState<Array<{ month: string; spending: number }>>([]);
   const { user } = useAuth();
   const subscriptionService = new SubscriptionService();
 
@@ -27,8 +28,18 @@ const Analytics = () => {
       if (user) {
         setLoading(true);
         try {
-          const data = await subscriptionService.getSubscriptions(user.uid);
+          // Load subscriptions for selected year
+          const data = selectedYear === new Date().getFullYear() 
+            ? await subscriptionService.getSubscriptions(user.uid)
+            : await subscriptionService.getSubscriptionsForYear(user.uid, selectedYear);
+          
           setSubscriptions(data);
+          
+          // Load stats with dynamic monthly trend
+          const stats = await subscriptionService.getSubscriptionStats(user.uid, selectedYear);
+          setMonthlyTrendData(stats.monthlyTrend);
+          
+          console.log(`📊 Analytics loaded for ${selectedYear}: ${data.length} subscriptions, ${stats.monthlyTrend.length} months`);
         } catch (error) {
           console.error('Error loading analytics data:', error);
         } finally {
@@ -38,7 +49,7 @@ const Analytics = () => {
     };
 
     loadData();
-  }, [user]);
+  }, [user, selectedYear]); // Re-load when year changes
 
   // Generate available years from subscription data
   const getAvailableYears = () => {
@@ -74,46 +85,6 @@ const Analytics = () => {
       default: return subscription.amount;
     }
   };
-
-  // Generate monthly trend data for selected year
-  const monthlyData = (() => {
-    const months = [];
-    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'active');
-    
-    // Generate 12 months for the selected year
-    for (let month = 0; month < 12; month++) {
-      const date = new Date(selectedYear, month, 1);
-      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
-      
-      // Calculate spending for this specific month/year
-      let monthlySpending = 0;
-      
-      activeSubscriptions.forEach(sub => {
-        const subDetectedDate = new Date(sub.detectedAt);
-        const subYear = subDetectedDate.getFullYear();
-        const subMonth = subDetectedDate.getMonth();
-        
-        // Only include subscriptions that were active during this month
-        if (subYear <= selectedYear && (subYear < selectedYear || subMonth <= month)) {
-          monthlySpending += getMonthlyAmount(sub);
-        }
-      });
-      
-      // Add some realistic variation for historical data
-      if (selectedYear < new Date().getFullYear()) {
-        const variation = (Math.random() - 0.5) * (monthlySpending * 0.1);
-        monthlySpending = Math.max(0, monthlySpending + variation);
-      }
-      
-      months.push({
-        month: monthName,
-        spending: Math.round(monthlySpending * 100) / 100,
-        fullDate: `${monthName} ${selectedYear}`
-      });
-    }
-    
-    return months;
-  })();
 
   // Generate category data for selected year
   const categoryData = (() => {
@@ -170,6 +141,13 @@ const Analytics = () => {
   const averageSubscriptionCost = yearSubscriptions.filter(sub => sub.status === 'active').length > 0 
     ? totalMonthlySpending / yearSubscriptions.filter(sub => sub.status === 'active').length 
     : 0;
+
+  // Handle year change
+  const handleYearChange = (year: number) => {
+    console.log(`📅 Year changed to: ${year}`);
+    setSelectedYear(year);
+    // Data will reload automatically via useEffect
+  };
 
   if (loading) {
     return (
@@ -230,7 +208,7 @@ const Analytics = () => {
                     {availableYears.map((year) => (
                       <DropdownMenuItem
                         key={year}
-                        onClick={() => setSelectedYear(year)}
+                        onClick={() => handleYearChange(year)}
                         className={selectedYear === year ? "bg-accent" : ""}
                       >
                         <div className="flex items-center justify-between w-full">
@@ -314,42 +292,49 @@ const Analytics = () => {
               </Card>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 📊 DYNAMIC MONTHLY CHART */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Monthly Spending Trend - {selectedYear}</CardTitle>
+                    <CardTitle>
+                      Monthly Spending Trend - {selectedYear}
+                      {selectedYear === new Date().getFullYear() && " (Current Year)"}
+                    </CardTitle>
                     <CardDescription>
-                      Your subscription spending throughout {selectedYear}
-                      {selectedYear === new Date().getFullYear() && " (current year)"}
+                      {selectedYear === new Date().getFullYear() 
+                        ? `Your subscription spending from January to ${new Date().toLocaleDateString('en-US', { month: 'long' })} ${selectedYear}`
+                        : `Your subscription spending throughout all of ${selectedYear}`
+                      }
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={monthlyData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
-                          formatter={(value, name, props) => [
-                            `$${value}`, 
-                            'Spending'
-                          ]}
-                          labelFormatter={(label, payload) => {
-                            if (payload && payload[0]) {
-                              return payload[0].payload.fullDate;
-                            }
-                            return label;
-                          }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="spending" 
-                          stroke="#8884d8" 
-                          strokeWidth={2}
-                          dot={{ fill: "#8884d8", strokeWidth: 2, r: 4 }}
-                          activeDot={{ r: 6, stroke: "#8884d8", strokeWidth: 2 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    {monthlyTrendData.length === 0 ? (
+                      <div className="h-[300px] flex items-center justify-center">
+                        <p className="text-muted-foreground">No spending data available for {selectedYear}</p>
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={monthlyTrendData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip 
+                            formatter={(value, name) => [
+                              `$${value}`, 
+                              'Spending'
+                            ]}
+                            labelFormatter={(label) => `${label} ${selectedYear}`}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="spending" 
+                            stroke="#8884d8" 
+                            strokeWidth={2}
+                            dot={{ fill: "#8884d8", strokeWidth: 2, r: 4 }}
+                            activeDot={{ r: 6, stroke: "#8884d8", strokeWidth: 2 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
                   </CardContent>
                 </Card>
                 
@@ -449,6 +434,7 @@ const Analytics = () => {
                   <CardTitle>{selectedYear} Summary</CardTitle>
                   <CardDescription>
                     Complete overview of your subscription spending in {selectedYear}
+                    {selectedYear === new Date().getFullYear() && " (up to current month)"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

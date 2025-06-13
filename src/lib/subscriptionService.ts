@@ -138,9 +138,9 @@ export class SubscriptionService {
       .filter(payment => payment.daysUntilPayment >= 0 && payment.daysUntilPayment <= 30)
       .sort((a, b) => a.daysUntilPayment - b.daysUntilPayment);
 
-    // Generate monthly trend (last 6 months or for specific year)
+    // Generate monthly trend based on year selection
     const monthlyTrend = year 
-      ? this.generateYearlyTrend(activeSubscriptions, year)
+      ? this.generateYearlyTrendDynamic(activeSubscriptions, year)
       : this.generateMonthlyTrend(activeSubscriptions);
 
     // Currency breakdown
@@ -190,10 +190,25 @@ export class SubscriptionService {
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
   }
 
-  private generateYearlyTrend(subscriptions: Array<DetectedSubscription & { convertedAmount: number }>, year: number): Array<{ month: string; spending: number }> {
+  /**
+   * 📊 DYNAMIC YEARLY TREND - Adapts based on selected year
+   */
+  private generateYearlyTrendDynamic(
+    subscriptions: Array<DetectedSubscription & { convertedAmount: number }>, 
+    year: number
+  ): Array<{ month: string; spending: number }> {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    const isCurrentYear = year === currentYear;
+    
+    console.log(`📊 Generating dynamic trend for ${year} (current: ${currentYear}, month: ${currentMonth})`);
+    
     const months = [];
     
-    for (let month = 0; month < 12; month++) {
+    // Determine how many months to show
+    const maxMonth = isCurrentYear ? currentMonth : 11; // 0-based, so 11 = December
+    
+    for (let month = 0; month <= maxMonth; month++) {
       const date = new Date(year, month, 1);
       const monthName = date.toLocaleDateString('en-US', { month: 'short' });
       
@@ -223,9 +238,9 @@ export class SubscriptionService {
         }
       });
       
-      // Add some realistic variation for historical data
-      if (year < new Date().getFullYear()) {
-        const variation = (Math.random() - 0.5) * (monthlySpending * 0.1);
+      // Add realistic variation for historical data (past years)
+      if (year < currentYear && monthlySpending > 0) {
+        const variation = (Math.random() - 0.5) * (monthlySpending * 0.15);
         monthlySpending = Math.max(0, monthlySpending + variation);
       }
       
@@ -235,6 +250,7 @@ export class SubscriptionService {
       });
     }
     
+    console.log(`📊 Generated ${months.length} months for ${year} (up to ${isCurrentYear ? 'current month' : 'December'})`);
     return months;
   }
 

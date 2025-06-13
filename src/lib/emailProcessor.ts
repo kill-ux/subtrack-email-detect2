@@ -332,6 +332,12 @@ export class EmailProcessor {
 
     console.log(`🔒 ULTRA-STRICT validation (${year}): "${subject}" from "${from}"`);
 
+    // 📧 LOG VALID SUBSCRIPTION EMAIL CONTENT
+    console.log(`\n📧 ===== VALID SUBSCRIPTION EMAIL DETECTED =====`);
+    console.log(`📋 SUBJECT: ${subject}`);
+    console.log(`📄 BODY: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`);
+    console.log(`📧 ===============================================\n`);
+
     // STEP 1: MANDATORY receipt keyword check
     const hasStrictReceiptKeyword = STRICT_RECEIPT_KEYWORDS.some(keyword => 
       subject.toLowerCase().includes(keyword) || fullText.includes(keyword)
