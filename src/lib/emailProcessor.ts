@@ -23,14 +23,15 @@ export interface DetectedSubscription {
   yearProcessed?: number;
 }
 
-// ULTRA-STRICT: Only the most reliable receipt keywords
+// 🔒 ULTRA-STRICT: Only the most reliable receipt keywords
 const STRICT_RECEIPT_KEYWORDS = [
-  // Core payment confirmations
+  // Core payment confirmations - MUST be exact
   'payment receipt', 'billing receipt', 'subscription receipt', 'invoice receipt',
   'payment confirmation', 'billing confirmation', 'transaction receipt',
   'payment successful', 'payment complete', 'payment processed',
   'charge confirmation', 'auto-renewal confirmation', 'subscription confirmed',
   'thank you for your payment', 'payment received', 'transaction complete',
+  'subscription renewal receipt', 'recurring payment receipt',
   
   // Service-specific receipt patterns (most reliable)
   'kick receipt', 'kick payment confirmation', 'kick subscription receipt',
@@ -51,22 +52,24 @@ const STRICT_RECEIPT_KEYWORDS = [
   'recibo de pago', 'confirmación de pago', 'pago exitoso'
 ];
 
-// ULTRA-STRICT: Must have clear financial transaction language
+// 🔒 ULTRA-STRICT: Must have clear financial transaction language
 const MANDATORY_FINANCIAL_TERMS = [
-  // Payment processing terms
+  // Payment processing terms - MUST be present
   'amount charged', 'total charged', 'payment processed', 'successfully charged',
   'charged to your', 'billed to your', 'payment authorized', 'transaction approved',
   'subscription fee', 'monthly charge', 'annual fee', 'billing amount',
   'auto-pay', 'autopay', 'recurring charge', 'renewal fee',
+  'subscription cost', 'membership fee', 'plan cost',
   
   // Clear payment success indicators
   'payment successful', 'payment complete', 'successfully processed',
   'transaction successful', 'charge processed', 'billing successful',
   'payment confirmed', 'payment received', 'transaction approved',
+  'amount paid', 'total paid', 'payment amount',
   
   // Subscription-specific financial terms
   'subscription renewed', 'auto-renewal processed', 'recurring payment processed',
-  'membership fee charged', 'plan cost', 'subscription cost',
+  'membership fee charged', 'subscription fee charged',
   
   // Multi-language financial terms
   'تم الدفع', 'المبلغ المدفوع', 'رسوم الاشتراك', 'تم تحصيل المبلغ',
@@ -74,37 +77,44 @@ const MANDATORY_FINANCIAL_TERMS = [
   'cantidad cobrada', 'pago procesado', 'tarifa cobrada'
 ];
 
-// ULTRA-STRICT: Aggressive exclusions for non-payment emails
+// 🚫 ULTRA-STRICT: Aggressive exclusions for non-payment emails
 const STRICT_EXCLUSIONS = [
-  // Marketing and promotional
+  // Marketing and promotional - IMMEDIATE REJECTION
   'promotional', 'marketing', 'newsletter', 'offer', 'deal', 'discount',
   'sale', 'special offer', 'limited time', 'exclusive offer', 'promo code',
-  'coupon', 'voucher', 'free trial offer', 'upgrade offer',
+  'coupon', 'voucher', 'free trial offer', 'upgrade offer', 'black friday',
+  'cyber monday', 'holiday sale', 'summer sale', 'winter sale',
   
-  // Account management (non-payment)
+  // Account management (non-payment) - IMMEDIATE REJECTION
   'welcome', 'getting started', 'account created', 'sign up complete',
   'registration complete', 'account setup', 'profile created',
   'verify email', 'confirm email', 'email verification', 'account verification',
   'password reset', 'security alert', 'login alert', 'suspicious activity',
+  'two-factor', '2fa', 'security code', 'verification code',
   
-  // Shipping and delivery
+  // Shipping and delivery - IMMEDIATE REJECTION
   'order confirmation', 'shipping confirmation', 'delivery confirmation',
   'package shipped', 'order shipped', 'tracking information', 'delivery update',
-  'order status', 'shipment notification',
+  'order status', 'shipment notification', 'out for delivery', 'delivered',
   
-  // Free trials and cancellations (without payment)
+  // Free trials and cancellations (without payment) - IMMEDIATE REJECTION
   'free trial started', 'trial activated', 'trial period', 'trial access',
   'subscription cancelled', 'cancellation confirmed', 'service terminated',
-  'account closed', 'subscription ended',
+  'account closed', 'subscription ended', 'plan cancelled',
   
-  // Gift cards and one-time purchases
+  // Gift cards and one-time purchases - IMMEDIATE REJECTION
   'gift card', 'gift certificate', 'one-time purchase', 'single purchase',
-  'download complete', 'software download', 'license key',
+  'download complete', 'software download', 'license key', 'activation key',
   
-  // Support and notifications
+  // Support and notifications - IMMEDIATE REJECTION
   'support ticket', 'help request', 'customer service', 'technical support',
   'system notification', 'service update', 'maintenance notification',
-  'feature update', 'new feature', 'product update',
+  'feature update', 'new feature', 'product update', 'app update',
+  'terms of service', 'privacy policy', 'policy update',
+  
+  // Social and sharing - IMMEDIATE REJECTION
+  'shared with you', 'invitation', 'invite', 'friend request', 'follow',
+  'comment', 'like', 'mention', 'tag', 'notification',
   
   // Multi-language exclusions
   'ترويجي', 'تسويق', 'عرض خاص', 'مرحبا', 'إنشاء الحساب',
@@ -112,19 +122,19 @@ const STRICT_EXCLUSIONS = [
   'promocional', 'mercadeo', 'oferta especial', 'bienvenido', 'cuenta creada'
 ];
 
-// ULTRA-STRICT: Services that must have subscription context
+// 🔒 ULTRA-STRICT: Services that must have subscription context
 const VERIFIED_SUBSCRIPTION_SERVICES = {
   kick: { 
     name: 'Kick.com', 
     category: 'Streaming',
-    requiredTerms: ['subscription', 'premium', 'creator', 'monthly', 'payment'],
+    requiredTerms: ['subscription', 'premium', 'creator', 'monthly', 'payment', 'supporter'],
     domains: ['kick.com'],
-    patterns: [/kick\.com.*(?:subscription|payment|receipt)/i]
+    patterns: [/kick\.com.*(?:subscription|payment|receipt|premium|supporter)/i]
   },
   spotify: { 
     name: 'Spotify', 
     category: 'Music',
-    requiredTerms: ['premium', 'subscription', 'monthly', 'family', 'individual'],
+    requiredTerms: ['premium', 'subscription', 'monthly', 'family', 'individual', 'duo'],
     domains: ['spotify.com'],
     patterns: [/spotify.*(?:premium|subscription|payment|receipt)/i]
   },
@@ -138,7 +148,7 @@ const VERIFIED_SUBSCRIPTION_SERVICES = {
   netflix: { 
     name: 'Netflix', 
     category: 'Entertainment',
-    requiredTerms: ['subscription', 'monthly', 'plan', 'membership'],
+    requiredTerms: ['subscription', 'monthly', 'plan', 'membership', 'standard', 'premium'],
     domains: ['netflix.com'],
     patterns: [/netflix.*(?:subscription|payment|receipt|plan)/i]
   },
@@ -155,26 +165,40 @@ const VERIFIED_SUBSCRIPTION_SERVICES = {
     requiredTerms: ['pro', 'subscription', 'premium', 'team'],
     domains: ['stackblitz.com'],
     patterns: [/stackblitz.*(?:pro|subscription|payment|premium)/i]
+  },
+  adobe: {
+    name: 'Adobe Creative Cloud',
+    category: 'Design',
+    requiredTerms: ['creative cloud', 'subscription', 'plan', 'photoshop', 'illustrator'],
+    domains: ['adobe.com'],
+    patterns: [/adobe.*(?:creative|subscription|payment|plan)/i]
+  },
+  microsoft: {
+    name: 'Microsoft 365',
+    category: 'Productivity',
+    requiredTerms: ['365', 'office', 'subscription', 'plan', 'monthly'],
+    domains: ['microsoft.com', 'office.com'],
+    patterns: [/microsoft.*(?:365|office|subscription|payment)/i]
   }
 };
 
-// ULTRA-STRICT: Currency patterns with context validation
+// 🔒 ULTRA-STRICT: Currency patterns with context validation
 const STRICT_CURRENCY_PATTERNS = [
-  // USD with context
-  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price).*?\$(\d+(?:\.\d{2})?)/gi, currency: 'USD' },
-  { pattern: /\$(\d+(?:\.\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price)/gi, currency: 'USD' },
+  // USD with payment context - MUST have payment words nearby
+  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price|payment).*?\$(\d+(?:\.\d{2})?)/gi, currency: 'USD' },
+  { pattern: /\$(\d+(?:\.\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price|payment)/gi, currency: 'USD' },
   
-  // EUR with context
-  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price).*?€(\d+(?:[,\.]\d{2})?)/gi, currency: 'EUR' },
-  { pattern: /€(\d+(?:[,\.]\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price)/gi, currency: 'EUR' },
+  // EUR with payment context
+  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price|payment).*?€(\d+(?:[,\.]\d{2})?)/gi, currency: 'EUR' },
+  { pattern: /€(\d+(?:[,\.]\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price|payment)/gi, currency: 'EUR' },
   
-  // MAD with context
-  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price).*?(\d+(?:[,\.]\d{2})?)\s*(?:MAD|DH|dirham)/gi, currency: 'MAD' },
-  { pattern: /(\d+(?:[,\.]\d{2})?)\s*(?:MAD|DH|dirham).*?(?:charged|billed|paid|total|amount|cost|fee|price)/gi, currency: 'MAD' },
+  // MAD with payment context
+  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price|payment).*?(\d+(?:[,\.]\d{2})?)\s*(?:MAD|DH|dirham)/gi, currency: 'MAD' },
+  { pattern: /(\d+(?:[,\.]\d{2})?)\s*(?:MAD|DH|dirham).*?(?:charged|billed|paid|total|amount|cost|fee|price|payment)/gi, currency: 'MAD' },
   
-  // GBP with context
-  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price).*?£(\d+(?:\.\d{2})?)/gi, currency: 'GBP' },
-  { pattern: /£(\d+(?:\.\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price)/gi, currency: 'GBP' }
+  // GBP with payment context
+  { pattern: /(?:charged|billed|paid|total|amount|cost|fee|price|payment).*?£(\d+(?:\.\d{2})?)/gi, currency: 'GBP' },
+  { pattern: /£(\d+(?:\.\d{2})?).*?(?:charged|billed|paid|total|amount|cost|fee|price|payment)/gi, currency: 'GBP' }
 ];
 
 export class EmailProcessor {
@@ -200,9 +224,9 @@ export class EmailProcessor {
         throw new Error('Unable to obtain valid access token');
       }
 
-      // ULTRA-STRICT: Only search for confirmed payment receipts
+      // 🔒 ULTRA-STRICT: Only search for confirmed payment receipts
       const searchQueries = [
-        // Only confirmed payment receipts
+        // Only confirmed payment receipts with exact phrases
         `"payment receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         `"payment confirmation" after:${year}/01/01 before:${year + 1}/01/01`,
         `"payment successful" after:${year}/01/01 before:${year + 1}/01/01`,
@@ -212,6 +236,7 @@ export class EmailProcessor {
         `"charge confirmation" after:${year}/01/01 before:${year + 1}/01/01`,
         `"transaction receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         `"thank you for your payment" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"subscription renewed" after:${year}/01/01 before:${year + 1}/01/01`,
         
         // Service-specific confirmed payments only
         `from:kick.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
@@ -220,16 +245,19 @@ export class EmailProcessor {
         `from:netflix.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
         `from:github.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
         `from:stackblitz.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:adobe.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:microsoft.com "payment" after:${year}/01/01 before:${year + 1}/01/01`,
         
         // Payment processor receipts
         `from:stripe.com "receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         `from:paypal.com "receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         `"google play receipt" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"app store receipt" after:${year}/01/01 before:${year + 1}/01/01`,
         
         // Auto-renewal confirmations
         `"auto-renewal" "successful" after:${year}/01/01 before:${year + 1}/01/01`,
-        `"subscription renewed" after:${year}/01/01 before:${year + 1}/01/01`,
-        `"recurring payment" "processed" after:${year}/01/01 before:${year + 1}/01/01`
+        `"recurring payment" "processed" after:${year}/01/01 before:${year + 1}/01/01`,
+        `"subscription fee" "charged" after:${year}/01/01 before:${year + 1}/01/01`
       ];
 
       const detectedSubscriptions: DetectedSubscription[] = [];
@@ -312,7 +340,7 @@ export class EmailProcessor {
   }
 
   /**
-   * ULTRA-STRICT validation - only real payment receipts pass
+   * 🔒 ULTRA-STRICT validation - only real payment receipts pass
    */
   private validateReceiptEmailUltraStrict(email: any, year: number): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
@@ -332,12 +360,6 @@ export class EmailProcessor {
 
     console.log(`🔒 ULTRA-STRICT validation (${year}): "${subject}" from "${from}"`);
 
-    // 📧 LOG VALID SUBSCRIPTION EMAIL CONTENT
-    console.log(`\n📧 ===== VALID SUBSCRIPTION EMAIL DETECTED =====`);
-    console.log(`📋 SUBJECT: ${subject}`);
-    console.log(`📄 BODY: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`);
-    console.log(`📧 ===============================================\n`);
-
     // STEP 1: MANDATORY receipt keyword check
     const hasStrictReceiptKeyword = STRICT_RECEIPT_KEYWORDS.some(keyword => 
       subject.toLowerCase().includes(keyword) || fullText.includes(keyword)
@@ -348,7 +370,7 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 2: AGGRESSIVE exclusion check
+    // STEP 2: AGGRESSIVE exclusion check - IMMEDIATE REJECTION
     for (const exclusion of STRICT_EXCLUSIONS) {
       if (fullText.includes(exclusion) || subject.toLowerCase().includes(exclusion)) {
         console.log(`❌ REJECTED: Strict exclusion triggered: ${exclusion}`);
@@ -392,18 +414,24 @@ export class EmailProcessor {
       return null;
     }
 
+    // 📧 LOG VALID SUBSCRIPTION EMAIL CONTENT
+    console.log(`\n📧 ===== VALID SUBSCRIPTION EMAIL DETECTED =====`);
+    console.log(`📋 SUBJECT: ${subject}`);
+    console.log(`📄 BODY: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`);
+    console.log(`📧 ===============================================\n`);
+
     // Calculate ultra-strict confidence
-    let confidence = 0.9; // Start high for strict validation
+    let confidence = 0.95; // Start very high for ultra-strict validation
     
     // Boost for verified services
     if (['kick', 'spotify', 'tinder', 'netflix', 'stackblitz', 'github'].some(s => 
         serviceInfo.name.toLowerCase().includes(s))) {
-      confidence += 0.05;
+      confidence += 0.03;
     }
     
     // Boost for clear payment success
     if (fullText.includes('payment successful') || fullText.includes('payment complete')) {
-      confidence += 0.05;
+      confidence += 0.02;
     }
 
     const languageInfo = this.detectLanguageAndRegionEnhanced(fullText, from);
@@ -436,7 +464,7 @@ export class EmailProcessor {
   }
 
   /**
-   * ULTRA-STRICT amount extraction - must have payment context
+   * 🔒 ULTRA-STRICT amount extraction - must have payment context
    */
   private extractAmountUltraStrict(text: string, body: string, subject: string): { value: number; currency: string } | null {
     console.log(`💰 ULTRA-STRICT amount extraction with payment context...`);
@@ -459,7 +487,7 @@ export class EmailProcessor {
   }
 
   /**
-   * VERIFIED service identification - only known subscription services
+   * 🔒 VERIFIED service identification - only known subscription services
    */
   private identifyVerifiedService(subject: string, from: string, fullText: string): { name: string; category: string } | null {
     console.log(`🔍 VERIFIED service identification...`);
@@ -493,7 +521,7 @@ export class EmailProcessor {
   }
 
   /**
-   * Check if email has subscription context for the service
+   * 🔒 Check if email has subscription context for the service
    */
   private hasSubscriptionContext(fullText: string, serviceInfo: any): boolean {
     const service = Object.values(VERIFIED_SUBSCRIPTION_SERVICES).find(s => s.name === serviceInfo.name);
@@ -511,14 +539,15 @@ export class EmailProcessor {
   }
 
   /**
-   * Check for payment success indicators
+   * 🔒 Check for payment success indicators
    */
   private hasPaymentSuccessIndicators(fullText: string, subject: string): boolean {
     const successIndicators = [
       'payment successful', 'payment complete', 'payment processed',
       'successfully charged', 'transaction successful', 'payment confirmed',
       'charge processed', 'billing successful', 'payment received',
-      'transaction complete', 'payment authorized', 'charge confirmed'
+      'transaction complete', 'payment authorized', 'charge confirmed',
+      'auto-renewal successful', 'subscription renewed successfully'
     ];
     
     return successIndicators.some(indicator => 
@@ -552,7 +581,7 @@ export class EmailProcessor {
     return null;
   }
 
-  // Helper methods (reused from previous implementation)
+  // Helper methods
   private parseAmount(amountStr: string): number {
     const cleaned = amountStr.replace(/[^\d.,]/g, '');
     
