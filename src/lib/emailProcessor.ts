@@ -23,16 +23,20 @@ export interface DetectedSubscription {
   yearProcessed?: number;
 }
 
-// 🎯 PRECISE: Only genuine payment receipt keywords
+// 🎯 ENHANCED: More comprehensive payment receipt keywords
 const RECEIPT_KEYWORDS = [
-  // Core payment receipts (what real services send for PAYMENTS)
-  'payment receipt', 'billing receipt', 'subscription receipt', 'transaction receipt',
+  // Core payment receipts
+  'receipt', 'payment receipt', 'billing receipt', 'subscription receipt', 'transaction receipt',
   'payment confirmation', 'billing confirmation', 'subscription confirmation',
   'payment successful', 'payment complete', 'payment processed', 'payment authorized',
   'charge confirmation', 'transaction confirmation', 'purchase confirmation',
   'thank you for your payment', 'payment received', 'subscription renewed',
   'auto-renewal successful', 'recurring payment processed', 'subscription fee charged',
-  'billing statement', 'invoice paid', 'payment invoice',
+  'billing statement', 'invoice paid', 'payment invoice', 'invoice',
+  
+  // StackBlitz/Stripe specific patterns
+  'your receipt from', 'receipt from stackblitz', 'receipt from stripe',
+  'invoice from stackblitz', 'payment to stackblitz', 'charge from stackblitz',
   
   // Service-specific PAYMENT patterns
   'kick payment', 'kick subscription payment', 'kick supporter payment',
@@ -42,7 +46,7 @@ const RECEIPT_KEYWORDS = [
   'stackblitz payment', 'stackblitz pro payment', 'bolt pro payment',
   'tinder payment', 'tinder plus payment', 'tinder gold payment',
   
-  // Payment processor patterns (for SUCCESSFUL payments)
+  // Payment processor patterns
   'stripe payment receipt', 'paypal payment receipt', 'google play receipt',
   'app store receipt', 'subscription charged', 'auto-pay successful',
   
@@ -52,7 +56,7 @@ const RECEIPT_KEYWORDS = [
   'recibo de pago', 'confirmación de pago', 'pago exitoso'
 ];
 
-// 💰 PAYMENT-FOCUSED: Financial terms that indicate actual charges
+// 💰 ENHANCED: More comprehensive financial terms
 const FINANCIAL_TERMS = [
   // Actual payment processing
   'charged', 'billed', 'paid', 'payment processed', 'successfully charged',
@@ -61,13 +65,14 @@ const FINANCIAL_TERMS = [
   'auto-pay successful', 'autopay processed', 'recurring charge', 'subscription fee',
   'monthly charge', 'annual fee', 'billing amount', 'renewal fee',
   
-  // Currency and amounts (indicating real transactions)
+  // Currency and amounts
   '$', '€', '£', 'USD', 'EUR', 'GBP', 'MAD', 'DH', 'dirham',
   'amount', 'total', 'cost', 'fee', 'price', 'subscription cost',
   
   // Payment success indicators
   'payment successful', 'transaction successful', 'billing complete',
   'charge successful', 'auto-renewal processed', 'subscription active',
+  'receipt', 'invoice', 'bill', 'statement', // Basic financial terms
   
   // Multi-language payment terms
   'مبلغ مدفوع', 'رسوم مدفوعة', 'اشتراك نشط',
@@ -75,7 +80,7 @@ const FINANCIAL_TERMS = [
   'cantidad pagada', 'tarifa pagada', 'suscripción activa'
 ];
 
-// 🚫 ENHANCED EXCLUSIONS: Block non-payment emails more precisely
+// 🚫 STRICT EXCLUSIONS: Only block obvious non-payments
 const SMART_EXCLUSIONS = [
   // Refunds and cancellations (NEVER allow these)
   {
@@ -83,46 +88,28 @@ const SMART_EXCLUSIONS = [
     allowIf: [] // NEVER allow refunds as subscription receipts
   },
   
-  // Account management (not payments)
+  // Account management (not payments) - but allow if payment context
   {
     patterns: ['welcome', 'getting started', 'account created', 'sign up', 'registration'],
-    allowIf: ['payment', 'charged', 'billed', 'subscription fee']
+    allowIf: ['payment', 'charged', 'billed', 'subscription fee', 'receipt']
   },
   
-  // Security and verification (not payments)
+  // Security and verification (not payments) - but allow if payment context
   {
     patterns: ['password reset', 'security alert', 'verification code', 'two-factor', 'login attempt'],
-    allowIf: ['payment receipt', 'billing receipt']
+    allowIf: ['payment receipt', 'billing receipt', 'receipt']
   },
   
-  // Shipping and delivery (not subscriptions)
-  {
-    patterns: ['shipping', 'delivery', 'tracking', 'order shipped', 'package'],
-    allowIf: ['subscription', 'recurring', 'monthly subscription']
-  },
-  
-  // Marketing and promotions (not payments)
+  // Marketing and promotions (not payments) - but allow if payment context
   {
     patterns: ['promotional', 'marketing', 'newsletter', 'offer', 'deal', 'discount', 'sale'],
-    allowIf: ['payment receipt', 'subscription payment', 'billing receipt']
+    allowIf: ['payment receipt', 'subscription payment', 'billing receipt', 'receipt']
   },
   
-  // Trial starts (not payments)
+  // Trial starts (not payments) - but allow if payment context
   {
-    patterns: ['free trial started', 'trial activated', 'trial begins', 'trial period'],
-    allowIf: ['payment', 'charged', 'converted to paid', 'trial ended']
-  },
-  
-  // Support and help (not payments)
-  {
-    patterns: ['support ticket', 'help request', 'customer service', 'contact us'],
-    allowIf: ['payment receipt', 'billing inquiry']
-  },
-  
-  // Updates and notifications (not payments)
-  {
-    patterns: ['update available', 'new features', 'service update', 'maintenance'],
-    allowIf: ['payment', 'billing', 'subscription charged']
+    patterns: ['free trial started', 'trial activated', 'trial begins'],
+    allowIf: ['payment', 'charged', 'converted to paid', 'trial ended', 'receipt']
   }
 ];
 
@@ -137,24 +124,33 @@ const HARD_EXCLUSIONS = [
   'spam', 'phishing', 'fraud', 'suspicious activity', 'security breach',
   'unauthorized', 'disputed charge', 'payment failed', 'declined',
   
-  // Non-payment communications
-  'password', 'verification', 'confirm email', 'activate account',
-  'welcome to', 'getting started', 'how to use', 'tutorial',
-  
   // Multi-language exclusions
   'استرداد', 'إلغاء', 'احتيال', 'نشاط مشبوه',
   'remboursement', 'annulation', 'fraude', 'activité suspecte',
   'reembolso', 'cancelación', 'fraude', 'actividad sospechosa'
 ];
 
-// 🔍 VERIFIED SERVICES: Known subscription services
+// 🔍 ENHANCED SERVICES: Better StackBlitz detection
 const VERIFIED_SERVICES = {
+  stackblitz: { 
+    name: 'StackBlitz Pro', 
+    category: 'Development',
+    domains: ['stackblitz.com', 'stripe.com'],
+    keywords: ['stackblitz', 'stackblitz pro', 'bolt pro', 'stackblitz inc'],
+    patterns: [
+      /stackblitz(?!.*refund)/i,
+      /bolt pro(?!.*refund)/i,
+      /receipt.*stackblitz/i,
+      /invoice.*stackblitz/i,
+      /stackblitz.*inc/i
+    ]
+  },
   kick: { 
     name: 'Kick.com', 
     category: 'Streaming',
     domains: ['kick.com'],
     keywords: ['kick', 'kick.com', 'kick subscription', 'kick premium', 'kick supporter'],
-    patterns: [/kick(?!.*refund)/i] // Exclude refund emails
+    patterns: [/kick(?!.*refund)/i]
   },
   spotify: { 
     name: 'Spotify', 
@@ -183,13 +179,6 @@ const VERIFIED_SERVICES = {
     domains: ['github.com'],
     keywords: ['github', 'github pro', 'github copilot', 'github team'],
     patterns: [/github(?!.*refund)/i]
-  },
-  stackblitz: { 
-    name: 'StackBlitz', 
-    category: 'Development',
-    domains: ['stackblitz.com', 'stripe.com'],
-    keywords: ['stackblitz', 'stackblitz pro', 'bolt pro'],
-    patterns: [/(?:stackblitz|bolt pro)(?!.*refund)/i] // Exclude refund emails
   },
   adobe: {
     name: 'Adobe Creative Cloud',
@@ -234,7 +223,7 @@ export class EmailProcessor {
 
   async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🗓️ Starting ENHANCED ANTI-SPAM processing for ${year} (user: ${this.userId})`);
+      console.log(`🗓️ Starting ENHANCED StackBlitz-FRIENDLY processing for ${year} (user: ${this.userId})`);
       
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
       if (!isAuthorized) {
@@ -246,49 +235,47 @@ export class EmailProcessor {
         throw new Error('Unable to obtain valid access token');
       }
 
-      // 🎯 PAYMENT-FOCUSED: Search only for genuine payment receipts
+      // 🎯 ENHANCED: Better search queries for StackBlitz and other services
       const searchQueries = [
         // Core payment receipt searches (exclude refunds)
+        `subject:"receipt" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `subject:"payment receipt" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `subject:"payment confirmation" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `subject:"payment successful" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `subject:"billing receipt" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `subject:"subscription receipt" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        `subject:"invoice" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Service-specific payment searches (exclude refunds)
+        // StackBlitz specific searches (enhanced)
+        `from:stackblitz.com -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        `from:stripe.com "stackblitz" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        `"stackblitz inc" receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        `"bolt pro" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        
+        // Other service-specific searches
         `from:kick.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `from:spotify.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `from:tinder.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `from:netflix.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `from:github.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:stackblitz.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:adobe.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:microsoft.com payment -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Payment processor searches (exclude refunds)
+        // Payment processor searches (enhanced for StackBlitz)
         `from:stripe.com receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `from:paypal.com receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // Subscription-specific terms (exclude refunds)
+        // Subscription-specific terms
         `"subscription renewed" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         `"auto-renewal successful" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `"recurring payment processed" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
+        `"payment processed" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
         
-        // App store receipts (exclude refunds)
+        // App store receipts
         `"google play" receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `"app store" receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // Charged/billed terms (actual payments)
-        `"successfully charged" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `"subscription charged" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`,
-        `"payment processed" -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`
+        `"app store" receipt -refund -cancelled after:${year}/01/01 before:${year + 1}/01/01`
       ];
 
       const detectedSubscriptions: DetectedSubscription[] = [];
       const processedEmailIds = new Set<string>();
       
       for (const searchQuery of searchQueries) {
-        console.log(`🔍 ANTI-SPAM search (${year}): ${searchQuery.split(' ')[0]}...`);
+        console.log(`🔍 ENHANCED search (${year}): ${searchQuery.split(' ')[0]}...`);
         
         const response = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=100`,
@@ -333,7 +320,7 @@ export class EmailProcessor {
             }
 
             const email = await emailResponse.json();
-            const subscription = this.validatePaymentEmailStrict(email, year);
+            const subscription = this.validatePaymentEmailEnhanced(email, year);
             
             if (subscription) {
               const isDuplicate = detectedSubscriptions.some(existing => 
@@ -353,7 +340,7 @@ export class EmailProcessor {
         }
       }
 
-      console.log(`🎯 ANTI-SPAM detection (${year}) found ${detectedSubscriptions.length} VERIFIED payments for user: ${this.userId}`);
+      console.log(`🎯 ENHANCED detection (${year}) found ${detectedSubscriptions.length} VERIFIED payments for user: ${this.userId}`);
 
       await this.saveSubscriptionsForYear(detectedSubscriptions, year);
       return detectedSubscriptions;
@@ -364,9 +351,9 @@ export class EmailProcessor {
   }
 
   /**
-   * 🛡️ STRICT PAYMENT VALIDATION - Only allows genuine payment receipts
+   * 🛡️ ENHANCED VALIDATION - Better StackBlitz detection while blocking refunds
    */
-  private validatePaymentEmailStrict(email: any, year: number): DetectedSubscription | null {
+  private validatePaymentEmailEnhanced(email: any, year: number): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
@@ -382,7 +369,7 @@ export class EmailProcessor {
     const body = this.extractEmailBodyEnhanced(email.payload);
     const fullText = `${subject} ${body} ${from}`.toLowerCase();
 
-    console.log(`🛡️ STRICT PAYMENT validation (${year}): "${subject}" from "${from}"`);
+    console.log(`🛡️ ENHANCED validation (${year}): "${subject}" from "${from}"`);
 
     // STEP 1: IMMEDIATE HARD EXCLUSIONS (refunds, cancellations, etc.)
     for (const exclusion of HARD_EXCLUSIONS) {
@@ -392,14 +379,17 @@ export class EmailProcessor {
       }
     }
 
-    // STEP 2: Check for payment receipt keywords (strict)
+    // STEP 2: Check for payment receipt keywords (ENHANCED - more flexible)
     const hasPaymentKeyword = RECEIPT_KEYWORDS.some(keyword => 
       subject.toLowerCase().includes(keyword) || 
-      fullText.includes(keyword)
+      fullText.includes(keyword) ||
+      from.toLowerCase().includes(keyword)
     );
     
     if (!hasPaymentKeyword) {
       console.log(`❌ REJECTED: No payment receipt keyword found`);
+      console.log(`📋 Subject: "${subject}"`);
+      console.log(`👤 From: "${from}"`);
       return null;
     }
 
@@ -410,9 +400,9 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 4: Verify financial context (actual payment processing)
+    // STEP 4: Verify financial context (ENHANCED - more flexible)
     const hasPaymentContext = FINANCIAL_TERMS.some(term => 
-      fullText.includes(term) || subject.toLowerCase().includes(term)
+      fullText.includes(term) || subject.toLowerCase().includes(term) || from.toLowerCase().includes(term)
     );
     
     if (!hasPaymentContext) {
@@ -420,22 +410,22 @@ export class EmailProcessor {
       return null;
     }
 
-    // STEP 5: Extract and validate amount
-    const amount = this.extractAmountStrict(fullText, body, subject);
+    // STEP 5: Extract and validate amount (more flexible)
+    const amount = this.extractAmountEnhanced(fullText, body, subject);
     if (!amount || amount.value < 0.5 || amount.value > 2000) {
       console.log(`❌ REJECTED: Invalid payment amount: ${amount?.value} ${amount?.currency}`);
       return null;
     }
 
-    // STEP 6: Identify service (with anti-refund patterns)
-    const serviceInfo = this.identifyServiceStrict(subject, from, fullText);
+    // STEP 6: Identify service (ENHANCED for StackBlitz)
+    const serviceInfo = this.identifyServiceEnhanced(subject, from, fullText);
     if (!serviceInfo) {
       console.log(`❌ REJECTED: Unknown or invalid service`);
       return null;
     }
 
-    // STEP 7: Verify subscription context
-    if (!this.hasValidSubscriptionContext(fullText, subject, serviceInfo)) {
+    // STEP 7: Verify subscription context (more flexible)
+    if (!this.hasValidSubscriptionContextEnhanced(fullText, subject, serviceInfo)) {
       console.log(`❌ REJECTED: No valid subscription context`);
       return null;
     }
@@ -449,23 +439,28 @@ export class EmailProcessor {
     console.log(`🏢 SERVICE: ${serviceInfo.name} (${serviceInfo.category})`);
     console.log(`💳 =====================================\n`);
 
-    // Calculate confidence with strict criteria
-    let confidence = 0.9; // Start higher for strict validation
+    // Calculate confidence with enhanced criteria
+    let confidence = 0.85; // Start with good confidence
     
     // Boost for verified services
     if (Object.values(VERIFIED_SERVICES).some(s => s.name === serviceInfo.name)) {
-      confidence += 0.05;
+      confidence += 0.1;
     }
     
     // Boost for clear payment keywords in subject
-    if (['payment receipt', 'payment confirmation', 'payment successful'].some(keyword => 
+    if (['receipt', 'payment', 'invoice', 'billing'].some(keyword => 
       subject.toLowerCase().includes(keyword))) {
-      confidence += 0.03;
+      confidence += 0.05;
     }
     
     // Boost for payment success indicators
     if (fullText.includes('successfully charged') || fullText.includes('payment processed')) {
-      confidence += 0.02;
+      confidence += 0.03;
+    }
+
+    // Special boost for StackBlitz (known service)
+    if (serviceInfo.name.toLowerCase().includes('stackblitz')) {
+      confidence += 0.05;
     }
 
     const languageInfo = this.detectLanguageAndRegion(fullText, from);
@@ -528,10 +523,10 @@ export class EmailProcessor {
   }
 
   /**
-   * Strict amount extraction with payment context validation
+   * ENHANCED amount extraction - more flexible for StackBlitz receipts
    */
-  private extractAmountStrict(text: string, body: string, subject: string): { value: number; currency: string } | null {
-    console.log(`💰 STRICT payment amount extraction...`);
+  private extractAmountEnhanced(text: string, body: string, subject: string): { value: number; currency: string } | null {
+    console.log(`💰 ENHANCED payment amount extraction...`);
     
     for (const currencyPattern of CURRENCY_PATTERNS) {
       const matches = [...text.matchAll(currencyPattern.pattern)];
@@ -539,20 +534,21 @@ export class EmailProcessor {
         const amount = this.parseAmount(match[1]);
         
         if (this.validateAmountForCurrency(amount, currencyPattern.currency)) {
-          // Additional context check: ensure amount appears near payment terms
-          const amountContext = text.substring(
-            Math.max(0, match.index! - 100), 
-            Math.min(text.length, match.index! + 100)
-          );
-          
-          const hasPaymentContext = ['charged', 'paid', 'payment', 'billed', 'fee', 'cost'].some(term =>
-            amountContext.includes(term)
-          );
-          
-          if (hasPaymentContext) {
-            console.log(`✅ VALID PAYMENT ${currencyPattern.currency} amount: ${amount} (with context)`);
-            return { value: amount, currency: currencyPattern.currency };
-          }
+          console.log(`✅ VALID PAYMENT ${currencyPattern.currency} amount: ${amount}`);
+          return { value: amount, currency: currencyPattern.currency };
+        }
+      }
+    }
+    
+    // Try to find amounts in the subject line too
+    for (const currencyPattern of CURRENCY_PATTERNS) {
+      const matches = [...subject.matchAll(currencyPattern.pattern)];
+      for (const match of matches) {
+        const amount = this.parseAmount(match[1]);
+        
+        if (this.validateAmountForCurrency(amount, currencyPattern.currency)) {
+          console.log(`✅ VALID PAYMENT ${currencyPattern.currency} amount from subject: ${amount}`);
+          return { value: amount, currency: currencyPattern.currency };
         }
       }
     }
@@ -562,17 +558,17 @@ export class EmailProcessor {
   }
 
   /**
-   * Strict service identification with anti-refund patterns
+   * ENHANCED service identification - better StackBlitz detection
    */
-  private identifyServiceStrict(subject: string, from: string, fullText: string): { name: string; category: string } | null {
-    console.log(`🔍 STRICT service identification...`);
+  private identifyServiceEnhanced(subject: string, from: string, fullText: string): { name: string; category: string } | null {
+    console.log(`🔍 ENHANCED service identification...`);
     
-    // Check verified services with anti-refund patterns
+    // Check verified services with enhanced patterns
     for (const [key, service] of Object.entries(VERIFIED_SERVICES)) {
       // Check domain match
       const domainMatch = service.domains.some(domain => from.toLowerCase().includes(domain));
       
-      // Check keyword match (but not if it's a refund)
+      // Check keyword match (enhanced for StackBlitz)
       const keywordMatch = service.keywords.some(keyword => {
         const hasKeyword = subject.toLowerCase().includes(keyword) || 
                           fullText.includes(keyword) ||
@@ -585,22 +581,22 @@ export class EmailProcessor {
         return hasKeyword && !isRefund;
       });
       
-      // Check pattern match (with anti-refund patterns)
+      // Check pattern match (enhanced patterns)
       const patternMatch = service.patterns.some(pattern => 
         pattern.test(`${subject} ${from} ${fullText}`)
       );
       
       if ((domainMatch || keywordMatch || patternMatch) && 
           !fullText.includes('refund') && !fullText.includes('cancelled')) {
-        console.log(`✅ VERIFIED service: ${service.name} (payment context)`);
+        console.log(`✅ VERIFIED service: ${service.name} (enhanced detection)`);
         return { name: service.name, category: service.category };
       }
     }
     
-    // Try to extract from payment processor emails (exclude refunds)
+    // Enhanced extraction from payment processor emails
     if ((from.includes('stripe.com') || from.includes('paypal.com')) && 
         !fullText.includes('refund') && !fullText.includes('cancelled')) {
-      const extracted = this.extractServiceFromPaymentProcessor(subject, fullText);
+      const extracted = this.extractServiceFromPaymentProcessorEnhanced(subject, fullText, from);
       if (extracted) {
         console.log(`✅ EXTRACTED service: ${extracted.name} (payment processor)`);
         return extracted;
@@ -612,49 +608,60 @@ export class EmailProcessor {
   }
 
   /**
-   * Validate subscription context with payment focus
+   * ENHANCED subscription context validation
    */
-  private hasValidSubscriptionContext(fullText: string, subject: string, serviceInfo: any): boolean {
+  private hasValidSubscriptionContextEnhanced(fullText: string, subject: string, serviceInfo: any): boolean {
     const subscriptionTerms = [
       'subscription', 'recurring', 'monthly', 'annual', 'yearly', 'plan', 'membership',
       'premium', 'pro', 'plus', 'gold', 'vip', 'upgrade', 'renewal', 'auto-pay',
-      'service fee', 'billing cycle', 'subscription fee'
+      'service fee', 'billing cycle', 'subscription fee', 'receipt', 'invoice', 'payment'
     ];
     
     const hasSubscriptionTerms = subscriptionTerms.some(term => 
       fullText.includes(term) || subject.toLowerCase().includes(term)
     );
     
-    // For known subscription services, be more lenient but still require payment context
+    // For known subscription services, be more lenient
     const isKnownSubscriptionService = Object.values(VERIFIED_SERVICES).some(s => s.name === serviceInfo.name);
     
-    const hasPaymentTerms = ['charged', 'paid', 'payment', 'billed', 'fee'].some(term =>
-      fullText.includes(term) || subject.toLowerCase().includes(term)
-    );
+    // For StackBlitz specifically, be very lenient since it's a known dev tool subscription
+    const isStackBlitz = serviceInfo.name.toLowerCase().includes('stackblitz');
     
-    return (hasSubscriptionTerms || isKnownSubscriptionService) && hasPaymentTerms;
+    return hasSubscriptionTerms || isKnownSubscriptionService || isStackBlitz;
   }
 
   /**
-   * Extract service from payment processor emails (strict)
+   * ENHANCED service extraction from payment processors
    */
-  private extractServiceFromPaymentProcessor(subject: string, fullText: string): { name: string; category: string } | null {
+  private extractServiceFromPaymentProcessorEnhanced(subject: string, fullText: string, from: string): { name: string; category: string } | null {
     // Only extract if it's clearly a payment (not refund)
     if (fullText.includes('refund') || fullText.includes('cancelled') || 
         subject.toLowerCase().includes('refund') || subject.toLowerCase().includes('cancelled')) {
       return null;
     }
     
+    // Enhanced patterns for StackBlitz and other services
     const patterns = [
-      /(?:receipt|payment|charge).*?(?:from|for|to)\s+([A-Z][a-zA-Z\s,\.]+?)(?:\s|$|#|\.|,)/i,
-      /([A-Z][a-zA-Z\s]+?)\s+(?:subscription|payment|charge|receipt)/i,
-      /your\s+(?:receipt|payment|charge).*?from\s+([A-Z][a-zA-Z\s]+?)(?:\s|$|#|\.|,)/i
+      /(?:receipt|payment|charge|invoice).*?(?:from|for|to)\s+([A-Z][a-zA-Z\s,\.]+?)(?:\s|$|#|\.|,)/i,
+      /([A-Z][a-zA-Z\s]+?)\s+(?:subscription|payment|charge|receipt|inc\.?)/i,
+      /your\s+(?:receipt|payment|charge|invoice).*?from\s+([A-Z][a-zA-Z\s]+?)(?:\s|$|#|\.|,)/i,
+      /([A-Z][a-zA-Z\s]+?),?\s+Inc\.?/i, // For "StackBlitz, Inc."
+      /(StackBlitz)/i // Direct StackBlitz match
     ];
     
     for (const pattern of patterns) {
       const match = subject.match(pattern) || fullText.match(pattern);
       if (match && match[1]) {
-        const serviceName = match[1].trim().replace(/[,\.#].*$/, '');
+        let serviceName = match[1].trim().replace(/[,\.#].*$/, '');
+        
+        // Special handling for StackBlitz
+        if (serviceName.toLowerCase().includes('stackblitz')) {
+          return {
+            name: 'StackBlitz Pro',
+            category: 'Development'
+          };
+        }
+        
         if (serviceName.length > 2 && serviceName.length < 50) {
           return {
             name: serviceName,
@@ -667,7 +674,7 @@ export class EmailProcessor {
     return null;
   }
 
-  // Helper methods (same as before)
+  // Helper methods (same as before but enhanced)
   private parseAmount(amountStr: string): number {
     const cleaned = amountStr.replace(/[^\d.,]/g, '');
     
