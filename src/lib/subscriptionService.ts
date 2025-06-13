@@ -54,18 +54,30 @@ export class SubscriptionService {
   async getSubscriptionsForYear(userId: string, year: number): Promise<DetectedSubscription[]> {
     try {
       const subscriptionsRef = collection(db, 'subscriptions');
+      
+      // 🔧 FIX: Use simple query without composite index
       const q = query(
         subscriptionsRef,
-        where('userId', '==', userId),
-        where('yearProcessed', '==', year),
-        orderBy('detectedAt', 'desc')
+        where('userId', '==', userId)
+        // Remove yearProcessed filter to avoid index requirement
       );
       
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      const allSubscriptions = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as DetectedSubscription[];
+      
+      // Filter by year in JavaScript instead of Firestore
+      const yearSubscriptions = allSubscriptions.filter(sub => {
+        const detectedYear = new Date(sub.detectedAt).getFullYear();
+        const paymentYear = new Date(sub.nextPaymentDate).getFullYear();
+        return detectedYear === year || paymentYear === year || sub.yearProcessed === year;
+      });
+      
+      console.log(`📊 Filtered ${yearSubscriptions.length} subscriptions for year ${year} from ${allSubscriptions.length} total`);
+      
+      return yearSubscriptions;
     } catch (error) {
       console.error(`Error fetching subscriptions for year ${year}:`, error);
       return [];
