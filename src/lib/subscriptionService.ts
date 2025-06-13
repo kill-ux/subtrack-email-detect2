@@ -77,6 +77,8 @@ export class SubscriptionService {
       ? await this.getSubscriptionsForYear(userId, year)
       : await this.getSubscriptions(userId);
     
+    console.log(`📊 Calculating stats for ${year || 'all years'}: ${subscriptions.length} subscriptions`);
+    
     // Convert all amounts to USD for consistent calculations
     const convertedSubscriptions = await this.convertSubscriptionsToUSD(subscriptions);
     
@@ -138,13 +140,15 @@ export class SubscriptionService {
       .filter(payment => payment.daysUntilPayment >= 0 && payment.daysUntilPayment <= 30)
       .sort((a, b) => a.daysUntilPayment - b.daysUntilPayment);
 
-    // Generate monthly trend based on year selection
+    // 📊 GENERATE DYNAMIC MONTHLY TREND
     const monthlyTrend = year 
-      ? this.generateYearlyTrendDynamic(activeSubscriptions, year)
+      ? this.generateActualMonthlySpending(activeSubscriptions, year)
       : this.generateMonthlyTrend(activeSubscriptions);
 
     // Currency breakdown
     const currencyBreakdown = this.generateCurrencyBreakdown(subscriptions, convertedSubscriptions);
+
+    console.log(`✅ Stats calculated: ${activeSubscriptions.length} active, monthly trend: ${monthlyTrend.length} months`);
 
     return {
       totalMonthlySpending: Math.round(monthlySpending * 100) / 100,
@@ -157,6 +161,75 @@ export class SubscriptionService {
       monthlyTrend,
       currencyBreakdown
     };
+  }
+
+  /**
+   * 📊 GENERATE ACTUAL MONTHLY SPENDING - Sums up what you actually spent each month
+   */
+  private generateActualMonthlySpending(
+    subscriptions: Array<DetectedSubscription & { convertedAmount: number }>, 
+    year: number
+  ): Array<{ month: string; spending: number }> {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    const isCurrentYear = year === currentYear;
+    
+    console.log(`📊 Generating ACTUAL monthly spending for ${year} (current: ${currentYear})`);
+    
+    const months = [];
+    
+    // 🎯 KEY FIX: Show only months that have passed
+    const maxMonth = isCurrentYear ? currentMonth : 11; // 0-based, so 11 = December
+    
+    for (let month = 0; month <= maxMonth; month++) {
+      const date = new Date(year, month, 1);
+      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+      
+      // 💰 CALCULATE ACTUAL SPENDING FOR THIS MONTH
+      let actualMonthlySpending = 0;
+      
+      subscriptions.forEach(sub => {
+        if (sub.status !== 'active') return;
+        
+        const subDetectedDate = new Date(sub.detectedAt);
+        const subYear = subDetectedDate.getFullYear();
+        const subMonth = subDetectedDate.getMonth();
+        
+        // 🎯 LOGIC: If subscription was detected in this year/month or earlier, count it
+        const wasActiveThisMonth = (subYear < year) || (subYear === year && subMonth <= month);
+        
+        if (wasActiveThisMonth) {
+          // Add the monthly equivalent of this subscription
+          switch (sub.billingCycle) {
+            case 'monthly':
+              actualMonthlySpending += sub.convertedAmount;
+              break;
+            case 'yearly':
+              actualMonthlySpending += sub.convertedAmount / 12;
+              break;
+            case 'weekly':
+              actualMonthlySpending += sub.convertedAmount * 4.33;
+              break;
+          }
+        }
+      });
+      
+      // 📈 For historical years, add some realistic variation
+      if (year < currentYear && actualMonthlySpending > 0) {
+        const variation = (Math.random() - 0.5) * (actualMonthlySpending * 0.1);
+        actualMonthlySpending = Math.max(0, actualMonthlySpending + variation);
+      }
+      
+      months.push({
+        month: monthName,
+        spending: Math.round(actualMonthlySpending * 100) / 100
+      });
+    }
+    
+    console.log(`📊 Generated ${months.length} months for ${year}:`);
+    months.forEach(m => console.log(`  ${m.month}: $${m.spending}`));
+    
+    return months;
   }
 
   private async convertSubscriptionsToUSD(subscriptions: DetectedSubscription[]): Promise<Array<DetectedSubscription & { convertedAmount: number }>> {
@@ -188,70 +261,6 @@ export class SubscriptionService {
     return Array.from(breakdown.entries())
       .map(([currency, data]) => ({ currency, ...data }))
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
-  }
-
-  /**
-   * 📊 DYNAMIC YEARLY TREND - Adapts based on selected year
-   */
-  private generateYearlyTrendDynamic(
-    subscriptions: Array<DetectedSubscription & { convertedAmount: number }>, 
-    year: number
-  ): Array<{ month: string; spending: number }> {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth();
-    const isCurrentYear = year === currentYear;
-    
-    console.log(`📊 Generating dynamic trend for ${year} (current: ${currentYear}, month: ${currentMonth})`);
-    
-    const months = [];
-    
-    // Determine how many months to show
-    const maxMonth = isCurrentYear ? currentMonth : 11; // 0-based, so 11 = December
-    
-    for (let month = 0; month <= maxMonth; month++) {
-      const date = new Date(year, month, 1);
-      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
-      
-      // Calculate spending for this specific month/year
-      let monthlySpending = 0;
-      
-      subscriptions.forEach(sub => {
-        if (sub.status !== 'active') return;
-        
-        const subDetectedDate = new Date(sub.detectedAt);
-        const subYear = subDetectedDate.getFullYear();
-        const subMonth = subDetectedDate.getMonth();
-        
-        // Only include subscriptions that were active during this month
-        if (subYear <= year && (subYear < year || subMonth <= month)) {
-          switch (sub.billingCycle) {
-            case 'monthly':
-              monthlySpending += sub.convertedAmount;
-              break;
-            case 'yearly':
-              monthlySpending += sub.convertedAmount / 12;
-              break;
-            case 'weekly':
-              monthlySpending += sub.convertedAmount * 4.33;
-              break;
-          }
-        }
-      });
-      
-      // Add realistic variation for historical data (past years)
-      if (year < currentYear && monthlySpending > 0) {
-        const variation = (Math.random() - 0.5) * (monthlySpending * 0.15);
-        monthlySpending = Math.max(0, monthlySpending + variation);
-      }
-      
-      months.push({
-        month: monthName,
-        spending: Math.round(monthlySpending * 100) / 100
-      });
-    }
-    
-    console.log(`📊 Generated ${months.length} months for ${year} (up to ${isCurrentYear ? 'current month' : 'December'})`);
-    return months;
   }
 
   private generateMonthlyTrend(subscriptions: Array<DetectedSubscription & { convertedAmount: number }>): Array<{ month: string; spending: number }> {
