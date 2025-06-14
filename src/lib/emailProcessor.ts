@@ -646,6 +646,12 @@ export class EmailProcessor {
       return null;
     }
 
+    // 🎯 CONSOLE LOG FOR VALID SUBSCRIPTIONS - SUBJECT AND BODY ONLY
+    console.log(`\n🎉 ===== VALID SUBSCRIPTION DETECTED =====`);
+    console.log(`📧 SUBJECT: ${subject}`);
+    console.log(`📄 BODY: ${body}`);
+    console.log(`=======================================\n`);
+
     // Calculate enhanced confidence
     let confidence = 0.85; // Start slightly lower but more flexible
     
