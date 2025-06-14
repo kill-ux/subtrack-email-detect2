@@ -28,12 +28,12 @@ const RECEIPT_KEYWORDS = {
   en: [
     // Clear receipt indicators
     'receipt', 'payment receipt', 'billing receipt', 'subscription receipt',
-    'invoice', 'payment confirmation', 'billing confirmation', 'charge confirmation',
+    'payment confirmation', 'billing confirmation', 'charge confirmation',
     'payment successful', 'payment processed', 'transaction receipt', 'purchase receipt',
     'subscription confirmed', 'renewal confirmation', 'billing statement',
     'thank you for your payment', 'payment complete', 'subscription renewed',
     // More flexible patterns
-    'receipt for', 'payment for', 'billing for', 'charged for', 'invoice for'
+    'receipt for', 'payment for', 'billing for', 'charged for'
   ],
   
   ar: [
