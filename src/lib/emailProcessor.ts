@@ -166,11 +166,11 @@ export class EmailProcessor {
   }
 
   /**
-   * Process emails for a specific year with DETAILED DEBUGGING
+   * Process emails for a specific year with CLEAN OUTPUT
    */
   async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🔍 Starting BALANCED processing for ${year} (user: ${this.userId})`);
+      console.log(`🔍 Starting processing for ${year} (user: ${this.userId})`);
       
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
       if (!isAuthorized) {
@@ -220,8 +220,6 @@ export class EmailProcessor {
       let totalEmailsFound = 0;
       
       for (const searchQuery of searchQueries) {
-        console.log(`🔍 SEARCH: ${searchQuery}`);
-        
         const response = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=100`,
           {
@@ -233,15 +231,12 @@ export class EmailProcessor {
         );
 
         if (!response.ok) {
-          console.warn(`⚠️ Search query failed: ${response.status}`);
           continue;
         }
 
         const data = await response.json();
         const messages = data.messages || [];
         totalEmailsFound += messages.length;
-        
-        console.log(`📧 Found ${messages.length} emails for query`);
 
         for (const message of messages) {
           if (processedEmailIds.has(message.id)) {
@@ -262,12 +257,11 @@ export class EmailProcessor {
             );
 
             if (!emailResponse.ok) {
-              console.warn(`⚠️ Failed to fetch email ${message.id}: ${emailResponse.status}`);
               continue;
             }
 
             const email = await emailResponse.json();
-            const subscription = this.validateReceiptWithDetailedLogging(email, year);
+            const subscription = this.validateReceiptEmail(email, year);
             
             if (subscription) {
               // Check for duplicates
@@ -279,23 +273,44 @@ export class EmailProcessor {
               
               if (!isDuplicate) {
                 detectedSubscriptions.push(subscription);
-                console.log(`✅ VALID SUBSCRIPTION: ${subscription.serviceName} - ${subscription.currency} ${subscription.amount}`);
+                
+                // 🎉 ONLY PRINT VALID SUBSCRIPTIONS
+                const headers = email.payload?.headers || [];
+                const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
+                const body = this.extractEmailBodyWithDebug(email.payload);
+                
+                console.log(`\n✅ VALID SUBSCRIPTION FOUND:`);
+                console.log(`🏢 SERVICE: ${subscription.serviceName}`);
+                console.log(`💰 AMOUNT: ${subscription.currency} ${subscription.amount} (${subscription.billingCycle})`);
+                console.log(`📧 SUBJECT: ${subject}`);
+                console.log(`📄 BODY PREVIEW: ${body.substring(0, 200)}...`);
+                console.log(`=======================================`);
               }
             }
           } catch (error) {
-            console.error(`❌ Error processing email ${message.id}:`, error);
+            // Silent error handling - don't clutter console
+            continue;
           }
         }
       }
 
-      console.log(`\n📊 PROCESSING SUMMARY FOR ${year}:`);
-      console.log(`📧 Total emails found: ${totalEmailsFound}`);
+      console.log(`\n📊 FINAL SUMMARY FOR ${year}:`);
+      console.log(`📧 Total emails scanned: ${totalEmailsFound}`);
       console.log(`🔍 Unique emails processed: ${totalEmailsProcessed}`);
       console.log(`✅ Valid subscriptions detected: ${detectedSubscriptions.length}`);
-      console.log(`📋 Subscriptions found:`);
-      detectedSubscriptions.forEach(sub => {
-        console.log(`   - ${sub.serviceName}: ${sub.currency} ${sub.amount} (${sub.billingCycle})`);
-      });
+      
+      if (detectedSubscriptions.length > 0) {
+        console.log(`\n📋 ALL DETECTED SUBSCRIPTIONS:`);
+        detectedSubscriptions.forEach((sub, index) => {
+          console.log(`${index + 1}. ${sub.serviceName}: ${sub.currency} ${sub.amount} (${sub.billingCycle})`);
+        });
+      } else {
+        console.log(`\n❌ No valid subscriptions found for ${year}`);
+        console.log(`💡 This could mean:`);
+        console.log(`   - No subscription receipts in ${year}`);
+        console.log(`   - Receipts don't match our validation criteria`);
+        console.log(`   - Different email format than expected`);
+      }
 
       await this.saveSubscriptionsForYear(detectedSubscriptions, year);
       return detectedSubscriptions;
@@ -306,9 +321,9 @@ export class EmailProcessor {
   }
 
   /**
-   * 🔍 DETAILED VALIDATION WITH COMPREHENSIVE LOGGING
+   * 🔍 BALANCED VALIDATION - No verbose logging
    */
-  private validateReceiptWithDetailedLogging(email: any, year: number): DetectedSubscription | null {
+  private validateReceiptEmail(email: any, year: number): DetectedSubscription | null {
     const headers = email.payload?.headers || [];
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
     const from = headers.find((h: any) => h.name === 'From')?.value || '';
@@ -325,26 +340,17 @@ export class EmailProcessor {
     const body = this.extractEmailBodyWithDebug(email.payload);
     const fullText = `${subject} ${body}`.toLowerCase();
 
-    console.log(`\n🔍 ===== DETAILED VALIDATION =====`);
-    console.log(`📧 SUBJECT: ${subject}`);
-    console.log(`👤 FROM: ${from}`);
-    console.log(`📅 DATE: ${date}`);
-    console.log(`📄 BODY PREVIEW: ${body.substring(0, 300)}...`);
-
     // STEP 1: Check exclusions
     const exclusionFound = EXCLUSIONS.find(exclusion => 
       fullText.includes(exclusion.toLowerCase())
     );
     
     if (exclusionFound) {
-      console.log(`❌ REJECTED: Exclusion found: "${exclusionFound}"`);
       return null;
     }
-    console.log(`✅ PASSED: No exclusions found`);
 
     // STEP 2: Language detection
     const language = this.detectLanguage(fullText);
-    console.log(`🌐 LANGUAGE: ${language}`);
 
     // STEP 3: Receipt keyword check
     const receiptKeywords = RECEIPT_KEYWORDS[language] || RECEIPT_KEYWORDS.en;
@@ -353,11 +359,8 @@ export class EmailProcessor {
     );
 
     if (!foundReceiptKeyword) {
-      console.log(`❌ REJECTED: No receipt keyword found`);
-      console.log(`🔍 Looked for: ${receiptKeywords.slice(0, 5).join(', ')}...`);
       return null;
     }
-    console.log(`✅ PASSED: Receipt keyword found: "${foundReceiptKeyword}"`);
 
     // STEP 4: Financial indicator check
     const financialIndicators = FINANCIAL_INDICATORS[language] || FINANCIAL_INDICATORS.en;
@@ -366,28 +369,20 @@ export class EmailProcessor {
     );
 
     if (!foundFinancialIndicator) {
-      console.log(`❌ REJECTED: No financial indicator found`);
-      console.log(`🔍 Looked for: ${financialIndicators.slice(0, 5).join(', ')}...`);
       return null;
     }
-    console.log(`✅ PASSED: Financial indicator found: "${foundFinancialIndicator}"`);
 
     // STEP 5: Amount extraction
     const amount = this.extractAmount(fullText, body, subject);
     if (!amount || amount.value < 0.5 || amount.value > 1000) {
-      console.log(`❌ REJECTED: Invalid amount: ${amount?.value} ${amount?.currency}`);
       return null;
     }
-    console.log(`✅ PASSED: Valid amount found: ${amount.currency} ${amount.value}`);
 
     // STEP 6: Service identification
     const serviceInfo = this.identifyService(subject, from, fullText);
     if (!serviceInfo) {
-      console.log(`❌ REJECTED: Could not identify service`);
-      console.log(`🔍 Domain: ${this.extractDomain(from)}`);
       return null;
     }
-    console.log(`✅ PASSED: Service identified: ${serviceInfo.name} (${serviceInfo.category})`);
 
     // STEP 7: Subscription context
     const subscriptionTerms = [
@@ -400,19 +395,10 @@ export class EmailProcessor {
     );
 
     if (!foundSubscriptionTerm) {
-      console.log(`❌ REJECTED: No subscription context found`);
-      console.log(`🔍 Looked for: ${subscriptionTerms.slice(0, 5).join(', ')}...`);
       return null;
     }
-    console.log(`✅ PASSED: Subscription context found: "${foundSubscriptionTerm}"`);
 
     // 🎉 ALL CHECKS PASSED!
-    console.log(`\n🎉 ===== VALID SUBSCRIPTION DETECTED =====`);
-    console.log(`🏢 SERVICE: ${serviceInfo.name}`);
-    console.log(`💰 AMOUNT: ${amount.currency} ${amount.value}`);
-    console.log(`📧 SUBJECT: ${subject}`);
-    console.log(`=======================================\n`);
-
     const billingCycle = this.determineBillingCycle(fullText);
     const nextPaymentDate = this.calculateNextPaymentDate(billingCycle);
     const status = this.determineStatus(fullText);
@@ -577,7 +563,7 @@ export class EmailProcessor {
           return extractedBody;
         }
       } catch (e) {
-        console.warn(`⚠️ Failed to decode direct body:`, e);
+        // Silent error handling
       }
     }
 
@@ -592,7 +578,7 @@ export class EmailProcessor {
               extractedBody = partBody;
             }
           } catch (e) {
-            console.warn(`⚠️ Failed to decode part ${i}:`, e);
+            // Silent error handling
           }
         }
 
@@ -630,7 +616,6 @@ export class EmailProcessor {
         return decoded;
       }
     } catch (error) {
-      console.error('❌ Base64 decode error:', error);
       return '';
     }
   }
@@ -668,7 +653,6 @@ export class EmailProcessor {
             ...subscription,
             yearProcessed: year
           });
-          console.log(`✅ Added subscription (${year}): ${subscription.serviceName}`);
         } else {
           const docRef = doc(db, 'subscriptions', existingForYear.id);
           await updateDoc(docRef, {
@@ -676,7 +660,6 @@ export class EmailProcessor {
             yearProcessed: year,
             updatedAt: new Date().toISOString()
           });
-          console.log(`🔄 Updated subscription (${year}): ${subscription.serviceName}`);
         }
       } catch (error) {
         console.error(`❌ Error saving subscription ${subscription.serviceName}:`, error);
