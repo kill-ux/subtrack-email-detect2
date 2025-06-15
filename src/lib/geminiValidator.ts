@@ -70,11 +70,11 @@ export class GeminiValidator {
   }
 
   /**
-   * Create a detailed prompt for Gemini AI
+   * Create a detailed prompt for Gemini AI with specific focus on development services
    */
   private createValidationPrompt(subject: string, body: string, fromEmail: string): string {
     return `
-You are an expert email analyst specializing in subscription and payment receipt detection. 
+You are an expert email analyst specializing in subscription and payment receipt detection. You must be especially good at detecting DEVELOPMENT TOOL subscriptions like StackBlitz, GitHub, Stripe, etc.
 
 Analyze this email and determine if it's a VALID SUBSCRIPTION RECEIPT or PAYMENT CONFIRMATION.
 
@@ -84,42 +84,73 @@ EMAIL DETAILS:
 - Body: "${body.substring(0, 2000)}"
 
 VALIDATION CRITERIA:
-✅ VALID if the email contains:
-- Clear payment confirmation or receipt language
-- Specific monetary amount with currency
+✅ VALID SUBSCRIPTION RECEIPT if the email contains:
+- Clear payment confirmation, receipt, or billing language
+- Specific monetary amount with currency (even small amounts like $4, $5, $10)
 - Service/product name being paid for
-- Billing cycle information (monthly, yearly, weekly)
+- Evidence of recurring billing (monthly, yearly, weekly)
 - From a legitimate service provider
-- Contains words like: receipt, payment, billing, subscription, renewal, invoice, charged, paid
+
+🎯 PAY SPECIAL ATTENTION TO THESE DEVELOPMENT SERVICES:
+- StackBlitz Pro/Teams (stackblitz.com, stripe.com for StackBlitz)
+- GitHub Pro/Teams (github.com)
+- Stripe payments (stripe.com) - often used for other services
+- Vercel Pro (vercel.com)
+- Netlify Pro (netlify.com)
+- Figma Professional (figma.com)
+- Adobe Creative Cloud (adobe.com)
+- Microsoft 365/Azure (microsoft.com)
+- Google Workspace (google.com)
+- AWS/Cloud services (aws.amazon.com)
+
+🔍 LOOK FOR THESE PAYMENT INDICATORS:
+- "Payment successful", "Payment receipt", "Invoice", "Billing receipt"
+- "Subscription renewed", "Monthly charge", "Annual billing"
+- "Thank you for your payment", "Payment confirmation"
+- "Charged", "Billed", "Paid", "Transaction"
+- Dollar amounts: $4.00, $5.00, $10.00, $15.99, etc.
+- "Pro plan", "Premium", "Teams", "Professional"
 
 ❌ INVALID if the email is:
-- Welcome/signup emails
-- Password resets
+- Welcome/signup emails without payment
+- Password resets or security alerts
 - Marketing/promotional content
-- Account notifications
-- Payment failures
-- Free trial starts (without payment)
-- General service updates
+- Account notifications without billing
+- Payment failures or declined cards
+- Free trial starts (without actual payment)
+- General service updates or newsletters
 
 RESPOND ONLY IN THIS EXACT JSON FORMAT:
 {
   "isValidSubscription": true/false,
-  "serviceName": "exact service name",
+  "serviceName": "exact service name (e.g., 'StackBlitz Pro', 'GitHub Pro', 'Netflix')",
   "amount": numeric_amount,
   "currency": "USD/EUR/GBP/MAD/etc",
   "billingCycle": "monthly/yearly/weekly",
-  "category": "Entertainment/Productivity/Development/Music/etc",
+  "category": "Development/Entertainment/Productivity/Music/Design/etc",
   "confidence": 0.0-1.0,
   "reasoning": "brief explanation why valid/invalid"
 }
 
-EXAMPLES:
-✅ VALID: "Netflix Payment Receipt - $15.99 charged for monthly subscription"
-❌ INVALID: "Welcome to Netflix! Start your free trial"
-✅ VALID: "Spotify Premium - Payment Confirmation $9.99"
-❌ INVALID: "Update your payment method for Spotify"
+EXAMPLES OF VALID SUBSCRIPTIONS:
+✅ "StackBlitz Pro - Payment Receipt $10.00 monthly"
+✅ "GitHub Pro subscription - $4.00 charged monthly"
+✅ "Stripe payment receipt - StackBlitz Teams $25.00"
+✅ "Netflix Payment Receipt - $15.99 charged for monthly subscription"
+✅ "Spotify Premium - Payment Confirmation $9.99"
+✅ "Adobe Creative Cloud - Annual billing $599.88"
+✅ "Microsoft 365 - Monthly subscription $12.99"
 
-Be strict but fair. Only mark as valid if there's clear evidence of an actual payment/charge.
+EXAMPLES OF INVALID EMAILS:
+❌ "Welcome to StackBlitz! Start your free trial"
+❌ "Update your payment method for GitHub"
+❌ "Your StackBlitz trial expires soon"
+❌ "Security alert for your account"
+❌ "New features available in StackBlitz"
+
+IMPORTANT: Even small amounts like $4-10 are valid subscriptions for development tools. Don't dismiss them as too small.
+
+Be thorough but accurate. Mark as valid ONLY if there's clear evidence of an actual payment/charge for a service.
 `;
   }
 
