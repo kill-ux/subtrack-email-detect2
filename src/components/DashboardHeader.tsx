@@ -1,12 +1,12 @@
-
 import { Button } from "@/components/ui/button";
-import { Plus, Download, Info } from "lucide-react";
+import { Plus, Download, Info, Search } from "lucide-react";
 
 interface DashboardHeaderProps {
   onShowDetails: () => void;
+  onScanSubscriptions: () => void;
 }
 
-export function DashboardHeader({ onShowDetails }: DashboardHeaderProps) {
+export function DashboardHeader({ onShowDetails, onScanSubscriptions }: DashboardHeaderProps) {
   return (
     <div className="flex-1 flex items-center justify-between">
       <div>
@@ -22,9 +22,9 @@ export function DashboardHeader({ onShowDetails }: DashboardHeaderProps) {
           <Download className="h-4 w-4 mr-2" />
           Export
         </Button>
-        <Button size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Subscription
+        <Button size="sm" onClick={onScanSubscriptions} className="bg-gradient-to-r from-blue-600 to-purple-600">
+          <Search className="h-4 w-4 mr-2" />
+          Scan & Add Subscriptions
         </Button>
       </div>
     </div>
