@@ -94,7 +94,7 @@ export class EmailProcessor {
   }
 
   /**
-   * 🎯 TWO-STAGE VALIDATION: Traditional filtering + AI validation
+   * 🎯 TWO-STAGE VALIDATION: Traditional filtering + AI validation with rate limiting
    */
   async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
@@ -121,8 +121,8 @@ export class EmailProcessor {
         return [];
       }
 
-      // 🤖 STAGE 2: AI validation of candidates
-      console.log(`🤖 STAGE 2: AI validation of ${candidateEmails.length} candidates...`);
+      // 🤖 STAGE 2: AI validation of candidates with rate limiting
+      console.log(`🤖 STAGE 2: AI validation of ${candidateEmails.length} candidates with rate limiting...`);
       const detectedSubscriptions = await this.validateCandidatesWithAI(candidateEmails, year);
 
       console.log(`\n📊 FINAL TWO-STAGE SUMMARY FOR ${year}:`);
@@ -306,7 +306,7 @@ export class EmailProcessor {
   }
 
   /**
-   * 🤖 STAGE 2: Validate candidates with AI
+   * 🤖 STAGE 2: Validate candidates with AI (with enhanced rate limiting)
    */
   private async validateCandidatesWithAI(
     candidateEmails: Array<{
@@ -322,13 +322,14 @@ export class EmailProcessor {
     const detectedSubscriptions: DetectedSubscription[] = [];
     
     // Process in smaller batches to avoid rate limiting
-    const batchSize = 5;
+    const batchSize = 3; // Reduced batch size for better rate limiting
     for (let i = 0; i < candidateEmails.length; i += batchSize) {
       const batch = candidateEmails.slice(i, i + batchSize);
       console.log(`🤖 AI validating batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(candidateEmails.length/batchSize)} (${batch.length} emails)`);
       
-      for (const email of batch) {
-        console.log(`🔍 AI analyzing: ${email.subject.substring(0, 50)}...`);
+      for (let j = 0; j < batch.length; j++) {
+        const email = batch[j];
+        console.log(`🔍 AI analyzing email ${i + j + 1}/${candidateEmails.length}: ${email.subject.substring(0, 50)}...`);
         
         const aiResult = await this.geminiValidator.validateSubscriptionEmail(
           email.subject,
@@ -348,12 +349,19 @@ export class EmailProcessor {
           console.log(`🤖 AI CONFIDENCE: ${(aiResult.confidence * 100).toFixed(1)}%`);
           console.log(`💭 AI REASONING: ${aiResult.reasoning}`);
           console.log(`=======================================`);
-        } else if (aiResult) {
-          console.log(`❌ AI rejected: ${email.subject.substring(0, 50)}... (Confidence: ${(aiResult.confidence * 100).toFixed(1)}%)`);
         }
         
-        // Rate limiting between AI calls
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        // 🛡️ ENHANCED RATE LIMITING: 2 seconds between each AI call
+        if (i + j < candidateEmails.length - 1) {
+          console.log(`⏳ Waiting 2 seconds before next AI validation...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+      
+      // 🛡️ ADDITIONAL DELAY between batches
+      if (i + batchSize < candidateEmails.length) {
+        console.log(`⏳ Batch complete. Waiting 3 seconds before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
 
