@@ -28,6 +28,60 @@ export interface DetectedSubscription {
   };
 }
 
+// 🎯 TRADITIONAL VALIDATION PATTERNS - For initial filtering
+const RECEIPT_KEYWORDS = {
+  en: [
+    'receipt', 'payment receipt', 'billing receipt', 'subscription receipt',
+    'payment confirmation', 'billing confirmation', 'charge confirmation',
+    'payment successful', 'payment processed', 'transaction receipt', 'purchase receipt',
+    'subscription confirmed', 'renewal confirmation', 'billing statement',
+    'thank you for your payment', 'payment complete', 'subscription renewed',
+    'receipt for', 'payment for', 'billing for', 'charged for', 'invoice'
+  ],
+  
+  ar: [
+    'إيصال', 'فاتورة', 'إيصال الدفع', 'تأكيد الدفع', 'إيصال الاشتراك',
+    'فاتورة الخدمة', 'إيصال المعاملة', 'تأكيد الشراء', 'وصل'
+  ],
+  
+  fr: [
+    'reçu', 'facture', 'reçu de paiement', 'confirmation de paiement',
+    'reçu d\'abonnement', 'facture payée', 'reçu de transaction'
+  ],
+  
+  es: [
+    'recibo', 'factura', 'recibo de pago', 'confirmación de pago',
+    'recibo de suscripción', 'factura pagada'
+  ]
+};
+
+const FINANCIAL_INDICATORS = [
+  'amount', 'total', 'charged', 'paid', 'billed', 'payment', 'cost', 'price',
+  'fee', 'subscription fee', 'monthly charge', 'annual fee', '$', 'USD', 'EUR', 'MAD'
+];
+
+const SUBSCRIPTION_TERMS = [
+  'subscription', 'recurring', 'monthly', 'annual', 'plan', 'membership',
+  'premium', 'pro', 'plus', 'renewal', 'اشتراك', 'abonnement', 'suscripción'
+];
+
+const EXCLUSIONS = [
+  'welcome to', 'getting started', 'account created', 'verify your email',
+  'password reset', 'security alert', 'unsubscribe', 'account suspended',
+  'payment failed', 'card declined', 'update payment method', 'free trial',
+  'مرحبا بك', 'إنشاء الحساب', 'تأكيد البريد', 'bienvenue', 'compte créé'
+];
+
+const CURRENCY_PATTERNS = [
+  { pattern: /\$(\d+(?:\.\d{2})?)/g, currency: 'USD' },
+  { pattern: /(\d+(?:\.\d{2})?)\s*USD/gi, currency: 'USD' },
+  { pattern: /€(\d+(?:[,\.]\d{2})?)/g, currency: 'EUR' },
+  { pattern: /(\d+(?:[,\.]\d{2})?)\s*EUR/gi, currency: 'EUR' },
+  { pattern: /£(\d+(?:\.\d{2})?)/g, currency: 'GBP' },
+  { pattern: /(\d+(?:[,\.]\d{2})?)\s*(?:MAD|DH|dirham)/gi, currency: 'MAD' },
+  { pattern: /(\d+\.\d{2})/g, currency: 'USD' }
+];
+
 export class EmailProcessor {
   private userId: string;
   private tokenManager: GmailTokenManager;
@@ -40,11 +94,11 @@ export class EmailProcessor {
   }
 
   /**
-   * Process emails for a specific year with Gemini AI validation
+   * 🎯 TWO-STAGE VALIDATION: Traditional filtering + AI validation
    */
   async processEmailsForYear(year: number): Promise<DetectedSubscription[]> {
     try {
-      console.log(`🤖 Starting AI-powered processing for ${year} (user: ${this.userId})`);
+      console.log(`🎯 Starting TWO-STAGE validation for ${year} (user: ${this.userId})`);
       
       const isAuthorized = await this.tokenManager.isGmailAuthorized();
       if (!isAuthorized) {
@@ -56,102 +110,136 @@ export class EmailProcessor {
         throw new Error('Unable to obtain valid access token');
       }
 
-      // 🔍 COMPREHENSIVE SEARCH QUERIES - Cast a wider net for AI analysis
-      const searchQueries = [
-        // Basic receipt searches
-        `receipt after:${year}/01/01 before:${year + 1}/01/01`,
-        `payment after:${year}/01/01 before:${year + 1}/01/01`,
-        `invoice after:${year}/01/01 before:${year + 1}/01/01`,
-        `billing after:${year}/01/01 before:${year + 1}/01/01`,
-        `subscription after:${year}/01/01 before:${year + 1}/01/01`,
-        `charged after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // Service-specific searches
-        `from:stripe.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:netflix.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:spotify.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:github.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:stackblitz.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:tinder.com after:${year}/01/01 before:${year + 1}/01/01`,
-        `from:gotinder.com after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // Currency-based searches
-        `$ after:${year}/01/01 before:${year + 1}/01/01`,
-        `EUR after:${year}/01/01 before:${year + 1}/01/01`,
-        `MAD after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // Arabic searches
-        `إيصال after:${year}/01/01 before:${year + 1}/01/01`,
-        `فاتورة after:${year}/01/01 before:${year + 1}/01/01`,
-        
-        // French searches
-        `reçu after:${year}/01/01 before:${year + 1}/01/01`,
-        `facture after:${year}/01/01 before:${year + 1}/01/01`
-      ];
-
-      const candidateEmails: Array<{
-        id: string;
-        subject: string;
-        body: string;
-        fromEmail: string;
-        date: string;
-        fullEmail: any;
-      }> = [];
+      // 📧 STAGE 1: Traditional validation to gather candidates
+      console.log(`📧 STAGE 1: Traditional validation to gather candidates...`);
+      const candidateEmails = await this.gatherCandidateEmails(accessToken, year);
       
-      const processedEmailIds = new Set<string>();
-      let totalEmailsFound = 0;
+      console.log(`📊 Stage 1 Results: ${candidateEmails.length} candidate emails passed traditional validation`);
+
+      if (candidateEmails.length === 0) {
+        console.log(`❌ No candidate emails found for ${year}`);
+        return [];
+      }
+
+      // 🤖 STAGE 2: AI validation of candidates
+      console.log(`🤖 STAGE 2: AI validation of ${candidateEmails.length} candidates...`);
+      const detectedSubscriptions = await this.validateCandidatesWithAI(candidateEmails, year);
+
+      console.log(`\n📊 FINAL TWO-STAGE SUMMARY FOR ${year}:`);
+      console.log(`📧 Stage 1 (Traditional): ${candidateEmails.length} candidates`);
+      console.log(`🤖 Stage 2 (AI Validated): ${detectedSubscriptions.length} subscriptions`);
+      console.log(`🎯 Success Rate: ${candidateEmails.length > 0 ? ((detectedSubscriptions.length / candidateEmails.length) * 100).toFixed(1) : 0}%`);
       
-      // 📧 STEP 1: Collect candidate emails
-      console.log(`📧 Step 1: Collecting candidate emails for ${year}...`);
-      
-      for (const searchQuery of searchQueries) {
-        const response = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=50`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+      if (detectedSubscriptions.length > 0) {
+        console.log(`\n📋 ALL AI-VALIDATED SUBSCRIPTIONS:`);
+        detectedSubscriptions.forEach((sub, index) => {
+          console.log(`${index + 1}. ${sub.serviceName}: ${sub.currency} ${sub.amount} (${sub.billingCycle}) - AI Confidence: ${(sub.confidence * 100).toFixed(1)}%`);
+        });
+      }
 
-        if (!response.ok) continue;
+      await this.saveSubscriptionsForYear(detectedSubscriptions, year);
+      return detectedSubscriptions;
+    } catch (error) {
+      console.error(`❌ Error in two-stage processing for ${year}:`, error);
+      throw error;
+    }
+  }
 
-        const data = await response.json();
-        const messages = data.messages || [];
-        totalEmailsFound += messages.length;
+  /**
+   * 📧 STAGE 1: Gather candidate emails using traditional validation
+   */
+  private async gatherCandidateEmails(accessToken: string, year: number): Promise<Array<{
+    id: string;
+    subject: string;
+    body: string;
+    fromEmail: string;
+    date: string;
+    fullEmail: any;
+  }>> {
+    const searchQueries = [
+      `receipt after:${year}/01/01 before:${year + 1}/01/01`,
+      `payment after:${year}/01/01 before:${year + 1}/01/01`,
+      `invoice after:${year}/01/01 before:${year + 1}/01/01`,
+      `billing after:${year}/01/01 before:${year + 1}/01/01`,
+      `subscription after:${year}/01/01 before:${year + 1}/01/01`,
+      `charged after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:stripe.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:netflix.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:spotify.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:github.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:stackblitz.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `from:tinder.com after:${year}/01/01 before:${year + 1}/01/01`,
+      `$ after:${year}/01/01 before:${year + 1}/01/01`,
+      `EUR after:${year}/01/01 before:${year + 1}/01/01`,
+      `MAD after:${year}/01/01 before:${year + 1}/01/01`,
+      `إيصال after:${year}/01/01 before:${year + 1}/01/01`,
+      `فاتورة after:${year}/01/01 before:${year + 1}/01/01`,
+      `reçu after:${year}/01/01 before:${year + 1}/01/01`,
+      `facture after:${year}/01/01 before:${year + 1}/01/01`
+    ];
 
-        for (const message of messages) {
-          if (processedEmailIds.has(message.id)) continue;
-          processedEmailIds.add(message.id);
+    const candidateEmails: Array<{
+      id: string;
+      subject: string;
+      body: string;
+      fromEmail: string;
+      date: string;
+      fullEmail: any;
+    }> = [];
+    
+    const processedEmailIds = new Set<string>();
+    let totalEmailsScanned = 0;
+    
+    for (const searchQuery of searchQueries) {
+      const response = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(searchQuery)}&maxResults=50`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-          try {
-            const emailResponse = await fetch(
-              `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
+      if (!response.ok) continue;
 
-            if (!emailResponse.ok) continue;
+      const data = await response.json();
+      const messages = data.messages || [];
+      totalEmailsScanned += messages.length;
 
-            const email = await emailResponse.json();
-            const headers = email.payload?.headers || [];
-            const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
-            const from = headers.find((h: any) => h.name === 'From')?.value || '';
-            const date = headers.find((h: any) => h.name === 'Date')?.value || '';
+      for (const message of messages) {
+        if (processedEmailIds.has(message.id)) continue;
+        processedEmailIds.add(message.id);
 
-            // Verify email is from the specified year
-            const emailDate = new Date(date);
-            const emailYear = emailDate.getFullYear();
-            
-            if (emailYear !== year) continue;
+        try {
+          const emailResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=full`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
 
-            const body = this.extractEmailBody(email.payload);
-            
+          if (!emailResponse.ok) continue;
+
+          const email = await emailResponse.json();
+          const headers = email.payload?.headers || [];
+          const subject = headers.find((h: any) => h.name === 'Subject')?.value || '';
+          const from = headers.find((h: any) => h.name === 'From')?.value || '';
+          const date = headers.find((h: any) => h.name === 'Date')?.value || '';
+
+          // Verify email is from the specified year
+          const emailDate = new Date(date);
+          const emailYear = emailDate.getFullYear();
+          
+          if (emailYear !== year) continue;
+
+          const body = this.extractEmailBody(email.payload);
+          
+          // 🎯 TRADITIONAL VALIDATION
+          if (this.passesTraditionalValidation(subject, body, from)) {
             candidateEmails.push({
               id: message.id,
               subject,
@@ -160,78 +248,137 @@ export class EmailProcessor {
               date,
               fullEmail: email
             });
-          } catch (error) {
-            // Silent error handling
-            continue;
-          }
-        }
-      }
-
-      console.log(`📊 Collected ${candidateEmails.length} candidate emails from ${totalEmailsFound} total emails`);
-
-      // 🤖 STEP 2: AI Validation with Gemini
-      console.log(`🤖 Step 2: AI validation with Gemini for ${candidateEmails.length} emails...`);
-      
-      const detectedSubscriptions: DetectedSubscription[] = [];
-      
-      // Process emails in batches to avoid overwhelming the API
-      const batchSize = 10;
-      for (let i = 0; i < candidateEmails.length; i += batchSize) {
-        const batch = candidateEmails.slice(i, i + batchSize);
-        console.log(`🔍 Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(candidateEmails.length/batchSize)} (${batch.length} emails)`);
-        
-        for (const email of batch) {
-          const aiResult = await this.geminiValidator.validateSubscriptionEmail(
-            email.subject,
-            email.body,
-            email.fromEmail
-          );
-
-          if (aiResult && aiResult.isValidSubscription && aiResult.confidence > 0.7) {
-            // 🎉 VALID SUBSCRIPTION FOUND!
-            const subscription = this.createSubscriptionFromAI(email, aiResult, year);
-            detectedSubscriptions.push(subscription);
             
-            // 🎉 ONLY PRINT VALID SUBSCRIPTIONS
-            console.log(`\n✅ GEMINI AI VALIDATED SUBSCRIPTION:`);
-            console.log(`🏢 SERVICE: ${aiResult.serviceName}`);
-            console.log(`💰 AMOUNT: ${aiResult.currency} ${aiResult.amount} (${aiResult.billingCycle})`);
-            console.log(`📧 SUBJECT: ${email.subject}`);
-            console.log(`🤖 AI CONFIDENCE: ${(aiResult.confidence * 100).toFixed(1)}%`);
-            console.log(`💭 AI REASONING: ${aiResult.reasoning}`);
-            console.log(`📄 BODY PREVIEW: ${email.body.substring(0, 200)}...`);
-            console.log(`=======================================`);
+            console.log(`✅ Traditional validation passed: ${subject.substring(0, 60)}...`);
           }
-          
-          // Rate limiting
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          continue;
         }
       }
-
-      console.log(`\n📊 FINAL AI SUMMARY FOR ${year}:`);
-      console.log(`📧 Total emails scanned: ${totalEmailsFound}`);
-      console.log(`🔍 Candidate emails analyzed: ${candidateEmails.length}`);
-      console.log(`🤖 AI-validated subscriptions: ${detectedSubscriptions.length}`);
-      
-      if (detectedSubscriptions.length > 0) {
-        console.log(`\n📋 ALL AI-VALIDATED SUBSCRIPTIONS:`);
-        detectedSubscriptions.forEach((sub, index) => {
-          console.log(`${index + 1}. ${sub.serviceName}: ${sub.currency} ${sub.amount} (${sub.billingCycle}) - Confidence: ${(sub.confidence * 100).toFixed(1)}%`);
-        });
-      } else {
-        console.log(`\n❌ No valid subscriptions found by AI for ${year}`);
-        console.log(`💡 This could mean:`);
-        console.log(`   - No subscription receipts in ${year}`);
-        console.log(`   - Receipts don't meet AI validation criteria`);
-        console.log(`   - Different email format than expected`);
-      }
-
-      await this.saveSubscriptionsForYear(detectedSubscriptions, year);
-      return detectedSubscriptions;
-    } catch (error) {
-      console.error(`❌ Error processing ${year} emails:`, error);
-      throw error;
     }
+
+    console.log(`📊 Traditional validation: ${candidateEmails.length} candidates from ${totalEmailsScanned} emails scanned`);
+    return candidateEmails;
+  }
+
+  /**
+   * 🎯 Traditional validation logic
+   */
+  private passesTraditionalValidation(subject: string, body: string, fromEmail: string): boolean {
+    const fullText = `${subject} ${body}`.toLowerCase();
+
+    // Check exclusions first
+    const hasExclusion = EXCLUSIONS.some(exclusion => 
+      fullText.includes(exclusion.toLowerCase())
+    );
+    if (hasExclusion) return false;
+
+    // Must have receipt keywords
+    const allReceiptKeywords = [
+      ...RECEIPT_KEYWORDS.en,
+      ...RECEIPT_KEYWORDS.ar,
+      ...RECEIPT_KEYWORDS.fr,
+      ...RECEIPT_KEYWORDS.es
+    ];
+    
+    const hasReceiptKeyword = allReceiptKeywords.some(keyword => 
+      fullText.includes(keyword.toLowerCase())
+    );
+    if (!hasReceiptKeyword) return false;
+
+    // Must have financial indicators
+    const hasFinancialIndicator = FINANCIAL_INDICATORS.some(indicator => 
+      fullText.includes(indicator.toLowerCase())
+    );
+    if (!hasFinancialIndicator) return false;
+
+    // Must have subscription terms
+    const hasSubscriptionTerm = SUBSCRIPTION_TERMS.some(term => 
+      fullText.includes(term.toLowerCase())
+    );
+    if (!hasSubscriptionTerm) return false;
+
+    // Must have amount
+    const hasAmount = this.extractAmount(fullText);
+    if (!hasAmount || hasAmount.value < 0.5 || hasAmount.value > 1000) return false;
+
+    return true;
+  }
+
+  /**
+   * 🤖 STAGE 2: Validate candidates with AI
+   */
+  private async validateCandidatesWithAI(
+    candidateEmails: Array<{
+      id: string;
+      subject: string;
+      body: string;
+      fromEmail: string;
+      date: string;
+      fullEmail: any;
+    }>,
+    year: number
+  ): Promise<DetectedSubscription[]> {
+    const detectedSubscriptions: DetectedSubscription[] = [];
+    
+    // Process in smaller batches to avoid rate limiting
+    const batchSize = 5;
+    for (let i = 0; i < candidateEmails.length; i += batchSize) {
+      const batch = candidateEmails.slice(i, i + batchSize);
+      console.log(`🤖 AI validating batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(candidateEmails.length/batchSize)} (${batch.length} emails)`);
+      
+      for (const email of batch) {
+        console.log(`🔍 AI analyzing: ${email.subject.substring(0, 50)}...`);
+        
+        const aiResult = await this.geminiValidator.validateSubscriptionEmail(
+          email.subject,
+          email.body,
+          email.fromEmail
+        );
+
+        if (aiResult && aiResult.isValidSubscription && aiResult.confidence > 0.7) {
+          const subscription = this.createSubscriptionFromAI(email, aiResult, year);
+          detectedSubscriptions.push(subscription);
+          
+          // 🎉 ONLY PRINT AI-VALIDATED SUBSCRIPTIONS
+          console.log(`\n✅ AI VALIDATED SUBSCRIPTION:`);
+          console.log(`🏢 SERVICE: ${aiResult.serviceName}`);
+          console.log(`💰 AMOUNT: ${aiResult.currency} ${aiResult.amount} (${aiResult.billingCycle})`);
+          console.log(`📧 SUBJECT: ${email.subject}`);
+          console.log(`🤖 AI CONFIDENCE: ${(aiResult.confidence * 100).toFixed(1)}%`);
+          console.log(`💭 AI REASONING: ${aiResult.reasoning}`);
+          console.log(`=======================================`);
+        } else if (aiResult) {
+          console.log(`❌ AI rejected: ${email.subject.substring(0, 50)}... (Confidence: ${(aiResult.confidence * 100).toFixed(1)}%)`);
+        }
+        
+        // Rate limiting between AI calls
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      }
+    }
+
+    return detectedSubscriptions;
+  }
+
+  /**
+   * Extract amount from text
+   */
+  private extractAmount(text: string): { value: number; currency: string } | null {
+    for (const pattern of CURRENCY_PATTERNS) {
+      const matches = [...text.matchAll(pattern.pattern)];
+      for (const match of matches) {
+        let amount = parseFloat(match[1]);
+        
+        if (match[0].includes(',') && !match[0].includes('.')) {
+          amount = parseFloat(match[1].replace(',', '.'));
+        }
+        
+        if (amount > 0 && amount < 1000) {
+          return { value: amount, currency: pattern.currency };
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -259,7 +406,7 @@ export class EmailProcessor {
       lastEmailDate: new Date(email.date).toISOString(),
       emailSubject: email.subject,
       confidence: aiResult.confidence,
-      receiptType: 'ai_validated_receipt',
+      receiptType: 'two_stage_validated',
       yearProcessed: year,
       aiValidation: {
         reasoning: aiResult.reasoning,
@@ -268,9 +415,6 @@ export class EmailProcessor {
     };
   }
 
-  /**
-   * Determine subscription status from email content
-   */
   private determineStatusFromAI(body: string): 'active' | 'trial' | 'cancelled' {
     const lowerBody = body.toLowerCase();
     if (lowerBody.includes('trial') || lowerBody.includes('free trial')) return 'trial';
@@ -278,9 +422,6 @@ export class EmailProcessor {
     return 'active';
   }
 
-  /**
-   * Calculate next payment date
-   */
   private calculateNextPaymentDate(billingCycle: string): string {
     const now = new Date();
     switch (billingCycle) {
@@ -297,9 +438,6 @@ export class EmailProcessor {
     return now.toISOString();
   }
 
-  /**
-   * Enhanced email body extraction
-   */
   private extractEmailBody(payload: any): string {
     let extractedBody = '';
 
@@ -345,9 +483,6 @@ export class EmailProcessor {
     return extractedBody;
   }
 
-  /**
-   * Base64 URL decoding
-   */
   private decodeBase64Url(data: string): string {
     try {
       let base64 = data.replace(/-/g, '+').replace(/_/g, '/');
@@ -367,17 +502,11 @@ export class EmailProcessor {
     }
   }
 
-  /**
-   * Original method - calls processEmailsForYear with current year
-   */
   async processEmails(): Promise<DetectedSubscription[]> {
     const currentYear = new Date().getFullYear();
     return this.processEmailsForYear(currentYear);
   }
 
-  /**
-   * Save subscriptions for specific year
-   */
   private async saveSubscriptionsForYear(subscriptions: DetectedSubscription[], year: number): Promise<void> {
     const subscriptionsRef = collection(db, 'subscriptions');
 
