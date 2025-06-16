@@ -1,3 +1,5 @@
+import OpenAI from 'openai';
+
 export interface GeminiValidationResult {
   isValidSubscription: boolean;
   serviceName: string;
@@ -10,16 +12,21 @@ export interface GeminiValidationResult {
 }
 
 export class GeminiValidator {
-  private apiKey: string;
-  private apiUrl: string;
+  private openai: OpenAI;
 
   constructor() {
-    this.apiKey = 'AIzaSyCHFzr17FLBF8S7oJ8naYgmf6DVjXzzLqo';
-    this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+    this.openai = new OpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: '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',
+      defaultHeaders: {
+        'HTTP-Referer': 'https://subtrack-email-detect.lovable.app',
+        'X-Title': 'SubTracker - Email Subscription Detection',
+      },
+    });
   }
 
   /**
-   * Use Gemini AI to validate if an email is a subscription receipt
+   * Use OpenRouter AI to validate if an email is a subscription receipt
    */
   async validateSubscriptionEmail(
     subject: string, 
@@ -29,48 +36,37 @@ export class GeminiValidator {
     try {
       const prompt = this.createValidationPrompt(subject, body, fromEmail);
       
-      const response = await fetch(`${this.apiUrl}?key=${this.apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            topK: 1,
-            topP: 1,
-            maxOutputTokens: 1000,
+      console.log('🤖 Calling OpenRouter AI for validation...');
+      
+      const completion = await this.openai.chat.completions.create({
+        model: 'google/gemini-flash-1.5',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
           }
-        })
+        ],
+        temperature: 0.1,
+        max_tokens: 1000,
       });
 
-      if (!response.ok) {
-        console.error('❌ Gemini API error:', response.status, response.statusText);
-        return null;
-      }
-
-      const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const aiResponse = completion.choices[0]?.message?.content;
       
       if (!aiResponse) {
-        console.error('❌ No response from Gemini AI');
+        console.error('❌ No response from OpenRouter AI');
         return null;
       }
 
+      console.log('✅ OpenRouter AI response received');
       return this.parseGeminiResponse(aiResponse);
     } catch (error) {
-      console.error('❌ Error calling Gemini API:', error);
+      console.error('❌ Error calling OpenRouter AI:', error);
       return null;
     }
   }
 
   /**
-   * Create a detailed prompt for Gemini AI with specific focus on development services
+   * Create a detailed prompt for AI with specific focus on development services
    */
   private createValidationPrompt(subject: string, body: string, fromEmail: string): string {
     return `
@@ -155,14 +151,14 @@ Be thorough but accurate. Mark as valid ONLY if there's clear evidence of an act
   }
 
   /**
-   * Parse Gemini AI response into structured data
+   * Parse AI response into structured data
    */
   private parseGeminiResponse(response: string): GeminiValidationResult | null {
     try {
       // Extract JSON from response (in case there's extra text)
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.error('❌ No JSON found in Gemini response');
+        console.error('❌ No JSON found in AI response');
         return null;
       }
 
@@ -170,7 +166,7 @@ Be thorough but accurate. Mark as valid ONLY if there's clear evidence of an act
       
       // Validate required fields
       if (typeof parsed.isValidSubscription !== 'boolean') {
-        console.error('❌ Invalid Gemini response format');
+        console.error('❌ Invalid AI response format');
         return null;
       }
 
@@ -185,7 +181,7 @@ Be thorough but accurate. Mark as valid ONLY if there's clear evidence of an act
         reasoning: parsed.reasoning || 'No reasoning provided'
       };
     } catch (error) {
-      console.error('❌ Error parsing Gemini response:', error);
+      console.error('❌ Error parsing AI response:', error);
       console.error('Raw response:', response);
       return null;
     }
@@ -201,7 +197,7 @@ Be thorough but accurate. Mark as valid ONLY if there's clear evidence of an act
     
     for (let i = 0; i < emails.length; i++) {
       const email = emails[i];
-      console.log(`🤖 Gemini AI analyzing email ${i + 1}/${emails.length}: ${email.subject.substring(0, 50)}...`);
+      console.log(`🤖 OpenRouter AI analyzing email ${i + 1}/${emails.length}: ${email.subject.substring(0, 50)}...`);
       
       const result = await this.validateSubscriptionEmail(
         email.subject, 
