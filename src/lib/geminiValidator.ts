@@ -18,6 +18,7 @@ export class GeminiValidator {
     this.openai = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey: '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',
+      dangerouslyAllowBrowser: true, // ✅ Allow browser usage for OpenRouter
       defaultHeaders: {
         'HTTP-Referer': 'https://subtrack-email-detect.lovable.app',
         'X-Title': 'SubTracker - Email Subscription Detection',
